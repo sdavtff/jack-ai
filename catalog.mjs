@@ -15,11 +15,12 @@ export function settings(env = process.env) {
 }
 
 const capabilityList = route => ({
-  text: true,
+  text: !route.imageOutput || !!route.textOutput,
   code: true,
   vision: !!route.vision,
   files: !!route.files,
   reasoning: !!route.reasoning,
+  image: !!route.imageOutput,
   longContext: (route.context || 0) >= 200000
 });
 
@@ -41,7 +42,7 @@ function routeState(route, {checks, providers, verify}) {
     available = false; status = 'Indisponível';
     const provider = providers.find(p => p.name === (route.provider || 'OpenRouter'));
     reason = !provider?.connected ? (provider?.status || 'Provedor não configurado.') : 'Esta conta do ' + route.provider + ' não lista esta rota no momento.';
-  } else if (meta && verify) {
+  } else if (meta && verify && !route.imageOutput) {
     if (!check) { available = false; status = 'Verificando rota'; reason = 'A rota será liberada após uma chamada mínima bem-sucedida.'; }
     else if (!check.ok) { available = false; status = 'Falha na verificação'; reason = 'A última chamada mínima falhou: ' + (check.detail || 'sem detalhes') + '.'; }
   }
@@ -49,7 +50,8 @@ function routeState(route, {checks, providers, verify}) {
 }
 
 function candidates(profile, routes) {
-  const usable = routes.filter(r => r.available);
+  // Perfis de imagem só usam modelos de imagem; os demais nunca caem num modelo de imagem.
+  const usable = routes.filter(r => r.available && !!r.imageOutput === (profile.output === 'image'));
   const out = [];
   for (const token of profile.routes) {
     if (token === 'largest:*') out.push(...[...usable].sort((a, b) => (b.context || 0) - (a.context || 0)));
@@ -58,7 +60,7 @@ function candidates(profile, routes) {
   return [...new Map(out.map(r => [r.id, r])).values()];
 }
 
-const snapshot = route => route && ({id: route.id, apiId: route.apiId, name: route.name, vendor: route.vendor, host: route.host, vision: route.vision, reasoning: !!route.reasoning, context: route.context, price: route.price || null});
+const snapshot = route => route && ({id: route.id, apiId: route.apiId, name: route.name, vendor: route.vendor, host: route.host, vision: route.vision, reasoning: !!route.reasoning, image: !!route.imageOutput, context: route.context, price: route.price || null});
 
 export function buildCatalog({discovery, checks = new Map(), user = null, env = process.env}) {
   const conf = settings(env);
@@ -68,7 +70,7 @@ export function buildCatalog({discovery, checks = new Map(), user = null, env = 
   const known = new Set(listed.map(r => r.id));
   const missing = curated.filter(c => c.enabled && !known.has(c.id) && !conf.disabled.has(c.id))
     .map(c => ({id: c.id, apiId: c.apiId, name: c.name, vendor: c.vendor, host: c.host, provider: c.provider, listed: false, available: false,
-      vision: c.verified.inputs.includes('imagem'), files: c.verified.inputs.includes('arquivo'), context: c.verified.context, price: null}));
+      vision: c.verified.inputs.includes('imagem'), files: c.verified.inputs.includes('arquivo'), imageOutput: !!c.image, textOutput: !c.image || !!c.textOutput, context: c.verified.context, price: null}));
   const routes = [...listed, ...missing].filter(r => curatedById.get(r.id)?.enabled !== false)
     .map(r => routeState(r, {checks, providers, verify: conf.checks}));
 
@@ -84,7 +86,8 @@ export function buildCatalog({discovery, checks = new Map(), user = null, env = 
       tasks: profile.tasks, access: profile.access, controls: profile.controls || [], media: profile.media || null, available, reason,
       status: available ? 'Disponível' : 'Indisponível', route: snapshot(route), visionRoute: snapshot(vision),
       routes: list.map(r => r.id), host: route?.host || null, context: route?.context || null,
-      capabilities: {text: true, code: true, vision: !!vision, files: !!route?.files, reasoning: !!route?.reasoning, longContext: (route?.context || 0) >= 200000},
+      capabilities: {text: profile.output !== 'image', code: profile.output !== 'image', vision: !!vision, files: !!route?.files, reasoning: !!route?.reasoning, image: profile.output === 'image' && !!route, longContext: (route?.context || 0) >= 200000},
+      output: profile.output || 'text',
       paid: true, preview: false
     };
   });
@@ -133,7 +136,8 @@ export function pendingChecks(discovery, checks, env = process.env) {
   if (!conf.checks) return [];
   const now = Date.now();
   return discovery.routes.filter(route => {
-    if (!route.listed || !curatedById.has(route.id) || conf.disabled.has(route.id)) return false;
+    // Modelos de imagem não recebem chamada mínima: cada teste geraria uma imagem cobrada.
+    if (!route.listed || !curatedById.has(route.id) || conf.disabled.has(route.id) || route.imageOutput) return false;
     const check = checks.get(route.id);
     if (!check) return true;
     if (check.ok) return now - check.checked > CHECK_TTL;

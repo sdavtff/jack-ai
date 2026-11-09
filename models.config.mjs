@@ -60,7 +60,7 @@ export const profiles = [
       {id: 'tone', label: 'Tom', options: ['Profissional', 'Descontraído', 'Inspirador', 'Direto', 'Formal', 'Bem-humorado']}
     ],
     // Nenhum adaptador de geração de imagem, áudio ou vídeo está integrado nesta versão.
-    media: {enabled: false, reason: 'Nenhuma integração de geração de mídia está configurada nesta instalação.'},
+    media: {enabled: false, reason: 'Para criar imagens e figurinhas, use o Jack AI Imagem.'},
     instructions: 'Você é o Jack AI Studio, especialista em conteúdo e comunicação. Responda em português do Brasil. Respeite o público, o formato e o tom indicados. Entregue o material pronto para uso e, quando fizer sentido, ofereça duas ou três variações curtas.'
   },
   {
@@ -74,6 +74,18 @@ export const profiles = [
       {id: 'observed', label: 'Erro observado', type: 'text', placeholder: 'Mensagem de erro ou sintoma'}
     ],
     instructions: 'Você é o Jack AI Code. Responda em português do Brasil. Para implementação e depuração: identifique a causa provável, explique a mudança em poucas linhas e sugira como testar. Entregue o código como arquivos: cada arquivo completo, sem trechos omitidos nem reticências, em um bloco próprio com a linguagem e o caminho na abertura (```lua main.lua, ```js src/app.js, ```html index.html). Quando o pedido for um projeto, entregue todos os arquivos necessários para rodar, incluindo um README.md curto com como executar. Comandos de terminal vão em blocos ```bash curtos, sem nome de arquivo. O Jack AI junta os arquivos num .zip para a pessoa baixar. Não invente APIs; quando faltar contexto, diga o que precisa ver.'
+  }
+,
+  {
+    id: 'jack/image', name: 'Jack AI Imagem', when: 'Figurinhas, ilustrações, ícones e imagens para posts',
+    description: 'Cria e edita imagens na conversa. Envie uma foto para virar figurinha ou peça ajustes na última imagem.',
+    tasks: ['imagem'], output: 'image', access: process.env.JACK_IMAGE_ACCESS === 'guest' ? 'guest' : 'account',
+    routes: ['openrouter/google/gemini-nano-banana-2.1', 'openrouter/openai/gpt-image-2', 'openrouter/google/gemini-3-pro-image', 'openrouter/google/gemini-3.1-flash-image', 'openrouter/google/gemini-3.1-flash-lite-image'],
+    controls: [
+      {id: 'style', label: 'Estilo', options: ['Figurinha (fundo liso para recortar)', 'Ilustração', 'Foto realista', 'Ícone', 'Logotipo', 'Pixel art']},
+      {id: 'ratio', label: 'Proporção', options: ['1:1 quadrada', '16:9 paisagem', '9:16 vertical', '4:3', '3:4']}
+    ],
+    instructions: 'Você é o Jack AI Imagem. Crie a imagem com fidelidade ao pedido. Se escrever algum texto junto, use português do Brasil e no máximo duas frases.'
   }
 ];
 
@@ -101,6 +113,9 @@ export const curated = [
   {id: 'openrouter/openai/gpt-6-luna', name: 'GPT-6 Luna', vendor: 'OpenAI', released: '2026-09-22', stage: 'estável',
     tasks: ['conversa', 'escrita'], description: 'O modelo mais econômico da série GPT-6, para tarefas rápidas e de alto volume.',
     verified: {context: 1050000, inputs: ['texto', 'imagem']}, source: or('openai/gpt-6-luna'), docs: 'https://developers.openai.com/api/docs/models'},
+  {id: 'openrouter/openai/gpt-image-2', name: 'GPT Image 2', vendor: 'OpenAI', released: '2026-06-24', stage: 'estável', image: true, textOutput: false,
+    tasks: ['imagem'], description: 'Modelo de imagem mais recente da OpenAI, para imagens de alta fidelidade e edição a partir de fotos.',
+    verified: {context: null, inputs: ['texto', 'imagem']}, source: or('openai/gpt-image-2'), docs: or('openai/gpt-image-2')},
   // Anthropic
   {id: 'openrouter/anthropic/claude-fable-5.1', name: 'Claude Fable 5.1', vendor: 'Anthropic', released: '2026-09-01', stage: 'estável',
     tasks: ['analise', 'codigo', 'escrita'], description: 'Modelo da classe Mythos da Anthropic aberto ao público, para raciocínio exigente, agentes de longa duração e código ambicioso.',
@@ -121,6 +136,18 @@ export const curated = [
   {id: 'openrouter/google/gemini-3.8-flash', name: 'Gemini 3.8 Flash', vendor: 'Google', released: '2026-09-02', stage: 'estável',
     tasks: ['conversa', 'analise', 'conteudo'], description: 'O Flash mais capaz do Google: rápido, multimodal e com contexto de cerca de 1 milhão de tokens.',
     verified: {context: 1048576, inputs: ['texto', 'imagem', 'vídeo', 'áudio', 'arquivo']}, source: or('google/gemini-3.8-flash'), docs: 'https://ai.google.dev/gemini-api/docs/models'},
+  {id: 'openrouter/google/gemini-nano-banana-2.1', name: 'Nano Banana 2.1', vendor: 'Google', released: '2026-10-06', stage: 'estável', image: true, textOutput: true,
+    tasks: ['imagem'], description: 'Modelo de geração e edição de imagens do Google na linha Flash, sucessor do Nano Banana 2 e do Nano Banana Pro.',
+    verified: {context: null, inputs: ['texto', 'imagem']}, source: or('google/gemini-nano-banana-2.1'), docs: 'https://ai.google.dev/gemini-api/docs/image-generation'},
+  {id: 'openrouter/google/gemini-3-pro-image', name: 'Nano Banana Pro', vendor: 'Google', released: '2026-06-18', stage: 'estável', image: true, textOutput: true,
+    tasks: ['imagem'], description: 'Modelo de imagem mais detalhista do Google, baseado no Gemini 3 Pro: edições localizadas, luz, foco e saídas em 2K e 4K.',
+    verified: {context: 131072, inputs: ['texto', 'imagem']}, source: or('google/gemini-3-pro-image'), docs: 'https://ai.google.dev/gemini-api/docs/image-generation'},
+  {id: 'openrouter/google/gemini-3.1-flash-image', name: 'Nano Banana 2', vendor: 'Google', released: '2026-06-18', stage: 'estável', image: true, textOutput: true,
+    tasks: ['imagem'], description: 'Qualidade perto do Nano Banana Pro na velocidade do Flash, com edição de imagens.',
+    verified: {context: 131072, inputs: ['texto', 'imagem']}, source: or('google/gemini-3.1-flash-image'), docs: 'https://ai.google.dev/gemini-api/docs/image-generation'},
+  {id: 'openrouter/google/gemini-3.1-flash-lite-image', name: 'Nano Banana 2 Lite', vendor: 'Google', released: '2026-06-30', stage: 'estável', image: true, textOutput: true,
+    tasks: ['imagem'], description: 'O modelo de imagem mais rápido e econômico do Google, bom para testar ideias.',
+    verified: {context: null, inputs: ['texto', 'imagem']}, source: or('google/gemini-3.1-flash-lite-image'), docs: 'https://ai.google.dev/gemini-api/docs/image-generation'},
   // xAI
   {id: 'openrouter/x-ai/grok-4.7', name: 'Grok 4.7', vendor: 'xAI', released: '2026-09-21', stage: 'estável',
     tasks: ['codigo', 'analise', 'escrita'], description: 'Modelo principal da xAI (SpaceXAI) para código, tarefas com agentes e trabalho de conhecimento.',

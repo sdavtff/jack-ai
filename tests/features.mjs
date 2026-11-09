@@ -142,6 +142,54 @@ test('esforço, raciocínio, pesquisa na web, PDF, continuação, login com Goog
     assert.equal(data.conta.email, 'pessoa@example.com'); assert.equal(data.conversas.length, guestChats);
     assert.equal((await a.call('chats', null, 'DELETE')).json.deleted, guestChats);
     assert.deepEqual((await a.call('chats')).json, []);
+    // Jack AI Imagem: imagem salva fora do JSON, protegida por conta, com edição da última imagem.
+    assert.equal((await b.call('generate', {model: 'jack/image', content: 'Um gato', history: []})).status, 403, 'imagens exigem conta');
+    const {json: {id: imgChat}} = await a.call('chats', {});
+    const pic = await a.call('generate', {id: imgChat, model: 'jack/image', content: 'Um gato astronauta', options: {style: 'Figurinha (fundo liso para recortar)', ratio: '16:9 paisagem'}, requestId: 'pedido-imagem'});
+    const media = pic.frames.find(f => f.image).image;
+    assert.match(media, /^\/api\/media\/[\w-]{36}$/);
+    const calls = async () => (await fetch('http://127.0.0.1:' + FIX + '/__images')).json();
+    let sent = (await calls()).at(-1);
+    assert.equal(sent.model, 'google/gemini-nano-banana-2.1', 'Image API do OpenRouter com o primeiro modelo do perfil');
+    assert.equal(sent.aspect_ratio, '16:9'); assert.equal(sent.n, 1); assert.equal(sent.references, 0);
+    assert.match(sent.prompt, /figurinha/i); assert.match(sent.prompt, /Um gato astronauta$/);
+    const got = await fetch(BASE + media, {headers: {cookie: 'jack=' + a.jar.get('jack')}});
+    assert.equal(got.status, 200); assert.equal(got.headers.get('content-type'), 'image/png');
+    assert.deepEqual([...new Uint8Array(await got.arrayBuffer()).slice(0, 4)], [137, 80, 78, 71]);
+    assert.equal((await fetch(BASE + media, {headers: {cookie: 'jack=' + b.jar.get('jack')}})).status, 404, 'imagem de outra pessoa não abre');
+    const edit = await a.call('generate', {id: imgChat, model: 'jack/image', content: 'Agora com fundo azul', requestId: 'pedido-imagem-2'});
+    assert.ok(edit.frames.some(f => f.image)); sent = (await calls()).at(-1);
+    assert.equal(sent.references, 1, 'a última imagem vai como referência'); assert.equal(sent.aspect_ratio, '1:1');
+    // Modelo sem Image API: o adaptador usa o chat com modalities e mostra o texto que vier junto.
+    const viaChat = await a.call('generate', {model: 'openrouter/google/gemini-3-pro-image', content: 'Um farol', history: []});
+    assert.match(viaChat.frames.find(f => f.image).image, /^data:image\/png;base64,/);
+    assert.match(viaChat.frames.filter(f => f.delta).map(f => f.delta).join(''), /gemini-3-pro-image` em 1:1/);
+    const saved = (await a.call('chats/' + imgChat)).json.messages;
+    assert.equal(saved[1].images[0], media); assert.ok(JSON.stringify(saved).length < 20000, 'a imagem não entra no JSON da conversa');
+    const temp = await a.call('generate', {model: 'jack/image', content: 'Um sol', history: []});
+    assert.match(temp.frames.find(f => f.image).image, /^data:image\/png;base64,/, 'conversa temporária não grava imagem no servidor');
+    assert.match((await a.call('generate', {model: 'jack/image', content: 'x [semimagem]', history: []})).frames.find(f => f.error).error, /não devolveu nenhuma imagem/);
+    assert.equal((await a.call('chats/' + imgChat, null, 'DELETE')).status, 200);
+    assert.equal((await fetch(BASE + media, {headers: {cookie: 'jack=' + a.jar.get('jack')}})).status, 404, 'excluir a conversa apaga as imagens');
+
+    // Interromper pelo servidor: funciona mesmo quando a conexão não fecha (proxy que segura o fluxo).
+    const {json: {id: slowChat}} = await a.call('chats', {});
+    const running = a.call('generate', {id: slowChat, model: 'jack/flash', content: 'Resposta demorada [lento]', requestId: 'pedido-lento-1', job: 'job-de-teste-1'});
+    await new Promise(r => setTimeout(r, 900));
+    assert.deepEqual((await b.call('stop', {job: 'job-de-teste-1'})).json, {stopped: false}, 'outra pessoa não interrompe a geração');
+    assert.deepEqual((await a.call('stop', {job: 'job-de-teste-1'})).json, {stopped: true});
+    const stopped = await running;
+    assert.ok(stopped.frames.at(-1).done);
+    const partial = (await a.call('chats/' + slowChat)).json.messages.at(-1);
+    assert.equal(partial.status, 'Geração interrompida.'); assert.match(partial.content, /Trecho 1 /); assert.doesNotMatch(partial.content, /Trecho 60/);
+    assert.deepEqual((await a.call('stop', {job: 'job-de-teste-1'})).json, {stopped: false}, 'geração encerrada sai da lista');
+
+    // Tutorial guiado: versão vista fica nas preferências e sobrevive a salvar o perfil.
+    assert.equal((await a.call('session', {})).json.prefs.tour, undefined);
+    assert.deepEqual((await a.call('tour', {version: 1})).json, {tour: 1});
+    await a.call('profile', {name: 'Pessoa', theme: 'dark', instructions: '', temperature: 0.7, maxTokens: 2048});
+    assert.equal((await a.call('session', {})).json.prefs.tour, 1);
+
     assert.equal((await c.call('logout-all', {})).status, 200);
     assert.equal((await c.call('chats')).status, 401); assert.equal((await d.call('chats')).status, 401, 'a outra sessão da mesma conta também saiu');
   } finally {

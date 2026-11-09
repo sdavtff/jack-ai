@@ -39,15 +39,17 @@ async function remoteModels() {
     key = {limit: data.limit ?? null, limitRemaining: data.limit_remaining ?? null, usage: data.usage ?? null};
     const {data: list} = await json(routerBase() + '/models/user', {headers: headers()});
     provider.connected = true;
-    const textual = m => m.architecture?.output_modalities?.includes('text') && m.architecture?.input_modalities?.includes('text');
+    // Texto na entrada e texto ou imagem na saída (modelos de imagem também entram).
+    const textual = m => m.architecture?.input_modalities?.includes('text') && ['text', 'image'].some(k => m.architecture?.output_modalities?.includes(k));
     const routes = list.filter(m => textual(m) && !isFreeVariant(m) && curatedIds.has('openrouter/' + m.id)).map(m => {
-      const inputs = m.architecture.input_modalities;
+      const inputs = m.architecture.input_modalities, outputs = m.architecture.output_modalities;
       return {
         id: 'openrouter/' + m.id, apiId: m.id, name: cleanName(m.name), vendor: vendorOf(m.id), host: 'OpenRouter', provider: 'OpenRouter',
         description: 'Rota paga' + (m.context_length ? ' · ' + Number(m.context_length).toLocaleString('pt-BR') + ' tokens de contexto' : ''),
         available: true, listed: true, paid: true, vision: inputs.includes('image'), files: inputs.includes('file'), inputs,
         temperature: m.supported_parameters?.includes('temperature') || false, context: Number(m.context_length) || null,
         reasoning: ['reasoning', 'include_reasoning'].some(k => m.supported_parameters?.includes(k)),
+        imageOutput: outputs.includes('image'), textOutput: outputs.includes('text'),
         maxOutput: Number(m.top_provider?.max_completion_tokens) || null, created: m.created || null,
         price: {input: perMillion(m.pricing?.prompt), output: perMillion(m.pricing?.completion)}
       };
@@ -103,18 +105,32 @@ function citations(list) {
 const reasoningText = delta => typeof delta?.reasoning === 'string' ? delta.reasoning
   : Array.isArray(delta?.reasoning_details) ? delta.reasoning_details.map(d => d?.text || d?.summary || '').filter(t => typeof t === 'string').join('') : '';
 
-async function* responseLines(body) {
-  let buffer = '';
-  for await (const text of body.pipeThrough(new TextDecoderStream())) {
-    buffer += text;
-    if (buffer.length > 2000000) throw new Error('Evento de streaming excedeu o tamanho permitido.');
-    let end;
-    while ((end = buffer.indexOf('\n')) >= 0) {
-      yield buffer.slice(0, end).trimEnd();
-      buffer = buffer.slice(end + 1);
+// Lê o SSE linha a linha. Ao interromper, cancela a leitura na hora: sem isso, um corpo
+// já em andamento pode continuar esperando o próximo pedaço mesmo com o fetch abortado.
+async function* responseLines(body, signal) {
+  const reader = body.pipeThrough(new TextDecoderStream()).getReader();
+  const stop = () => { reader.cancel().catch(() => {}); };
+  signal?.addEventListener('abort', stop, {once: true});
+  try {
+    let buffer = '';
+    while (true) {
+      if (signal?.aborted) throw new Error('Geração interrompida.');
+      const {value, done} = await reader.read();
+      if (signal?.aborted) throw new Error('Geração interrompida.');
+      if (done) break;
+      buffer += value;
+      if (buffer.length > 2000000) throw new Error('Evento de streaming excedeu o tamanho permitido.');
+      let end;
+      while ((end = buffer.indexOf('\n')) >= 0) {
+        yield buffer.slice(0, end).trimEnd();
+        buffer = buffer.slice(end + 1);
+      }
     }
+    if (buffer.trim()) yield buffer.trimEnd();
+  } finally {
+    signal?.removeEventListener('abort', stop);
+    if (!signal?.aborted) reader.cancel().catch(() => {});
   }
-  if (buffer.trim()) yield buffer.trimEnd();
 }
 
 async function findRoute(model) {
@@ -137,11 +153,11 @@ export async function* generate({route, model, messages, temperature = 0.7, maxT
   if (web) payload.tools = [{type: 'openrouter:web_search', parameters: {max_results: 5}}];
   // PDF: leitura nativa quando o modelo aceita arquivos; senão, o conversor gratuito do OpenRouter.
   if (!selected.files && adapted.some(m => Array.isArray(m.content) && m.content.some(p => p.type === 'file'))) payload.plugins = [{id: 'file-parser', pdf: {engine: 'cloudflare-ai'}}];
-  const timeout = AbortSignal.timeout(300000);
+  const timeout = AbortSignal.timeout(300000), combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
   let response;
   try {
     response = await fetch(routerBase() + '/chat/completions', {
-      method: 'POST', redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+      method: 'POST', redirect: 'error', signal: combined,
       headers: {'Content-Type': 'application/json', ...headers()}, body: JSON.stringify(payload)
     });
   } catch { throw new Error('Não foi possível conectar ao provedor. Verifique o serviço e tente novamente.'); }
@@ -149,7 +165,7 @@ export async function* generate({route, model, messages, temperature = 0.7, maxT
   let completed = false, emitted = false, finish = null;
   const sources = new Map();
   try {
-    for await (const line of responseLines(response.body)) {
+    for await (const line of responseLines(response.body, combined)) {
       if (!line || !line.startsWith('data:')) continue;
       const data = line.slice(5).trim();
       if (data === '[DONE]') { completed = true; break; }
@@ -168,6 +184,52 @@ export async function* generate({route, model, messages, temperature = 0.7, maxT
   if (!completed || !emitted) throw new Error('O provedor encerrou o fluxo sem uma resposta completa.');
   if (sources.size) yield {type: 'sources', value: [...sources.values()]};
   yield {type: 'finish', value: finish};
+}
+
+// Geração de imagem pelo endpoint de chat do OpenRouter (modalities). As imagens voltam
+// como data URLs em message.images. Sem streaming: a imagem chega inteira no fim.
+const generatedRule = /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/;
+// Imagens: Image API do OpenRouter (POST /images, resposta em b64_json). Se o modelo não estiver
+// nessa API (404/405), cai para o chat com modalities, que devolve message.images.
+const imageMime = /^image\/(png|jpeg|webp|gif)$/;
+function imageRequest(url, body, signal) {
+  const timeout = AbortSignal.timeout(240000);
+  return fetch(url, {method: 'POST', redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    headers: {'Content-Type': 'application/json', ...headers()}, body: JSON.stringify(body)})
+    .catch(() => { throw new Error(signal?.aborted ? 'Geração interrompida.' : 'Não foi possível conectar ao provedor. Verifique o serviço e tente novamente.'); });
+}
+async function readJson(response) {
+  try { return await response.json(); } catch { throw new Error('O provedor devolveu uma resposta inválida.'); }
+}
+export async function generateImage({route, model, prompt = '', references = [], messages, aspect = '1:1', signal}) {
+  const selected = await findRoute(route || model);
+  if (!selected) throw new Error('Selecione um modelo disponível. Confira os provedores nas configurações.');
+  const refs = selected.vision ? references.filter(u => typeof u === 'string' && u.length <= 8000000 && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/.test(u)).slice(0, 4) : [];
+  const text = String(prompt).trim().slice(0, 8000);
+  if (!text && !refs.length) throw new Error('Descreva a imagem que você quer criar.');
+  let response = await imageRequest(routerBase() + '/images', {model: selected.apiId, prompt: text || 'Recrie esta imagem.', n: 1, aspect_ratio: aspect,
+    ...(refs.length ? {input_references: refs.map(url => ({type: 'image_url', image_url: {url}}))} : {})}, signal);
+  if (response.ok) {
+    const data = await readJson(response);
+    const images = (Array.isArray(data?.data) ? data.data : []).map(x => {
+      const type = imageMime.test(x?.media_type || '') ? x.media_type : 'image/png';
+      return typeof x?.b64_json === 'string' && /^[A-Za-z0-9+/]+=*$/.test(x.b64_json) ? 'data:' + type + ';base64,' + x.b64_json : null;
+    }).filter(u => u && u.length <= 12000000).slice(0, 4);
+    if (!images.length) throw new Error('O modelo não devolveu nenhuma imagem. Tente descrever de outro jeito.');
+    return {images, text: ''};
+  }
+  if (![404, 405].includes(response.status)) { await response.body?.cancel(); throw Object.assign(new Error(providerError(response.status)), {status: response.status}); }
+  await response.body?.cancel();
+  // Rota sem Image API: chat com modalities, com o histórico e as instruções do perfil.
+  const chat = messages?.length ? messages : [{role: 'user', content: text, images: refs}];
+  response = await imageRequest(routerBase() + '/chat/completions', {model: selected.apiId, messages: adaptMessages(chat, selected.vision), stream: false,
+    modalities: selected.textOutput ? ['image', 'text'] : ['image'], image_config: {aspect_ratio: aspect}}, signal);
+  if (!response.ok) { await response.body?.cancel(); throw Object.assign(new Error(providerError(response.status)), {status: response.status}); }
+  const msg = (await readJson(response))?.choices?.[0]?.message || {};
+  const images = (Array.isArray(msg.images) ? msg.images : []).map(x => x?.image_url?.url || x?.url).filter(u => typeof u === 'string' && u.length <= 12000000 && generatedRule.test(u)).slice(0, 4);
+  const said = typeof msg.content === 'string' ? msg.content : Array.isArray(msg.content) ? msg.content.map(p => typeof p?.text === 'string' ? p.text : '').join('') : '';
+  if (!images.length) throw new Error(said.trim() ? 'O modelo respondeu sem imagem: ' + said.trim().slice(0, 240) : 'O modelo não devolveu nenhuma imagem. Tente descrever de outro jeito.');
+  return {images, text: said.trim()};
 }
 
 // Chamada mínima usada antes de liberar uma rota nova do catálogo.

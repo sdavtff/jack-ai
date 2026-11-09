@@ -1,9 +1,11 @@
 import {createDrafts, matchesChat, matchSnippet, preferredModel, suggestions, applySuggestion, incompatibleFiles, isImage, formatBytes, modelLabel} from './workspace.js';
 import {readApiResponse} from './api.js';
 import {icon} from './icons.js';
-import {renderMessage, saveFile} from './render.js';
+import {renderMessage, saveFile, isSvg} from './render.js';
+import {openViewer, blobOf} from './viewer.js';
 import {projectFiles, zipName} from './files.js';
 import {makeZip} from './zip.js';
+import {startTour, tourSteps, TOUR_VERSION} from './tour.js';
 import {createPicker} from './picker.js';
 import {renderLibrary} from './library.js';
 
@@ -16,7 +18,7 @@ const canon = id => state.catalog?.aliases?.[id] || id;
 const coarse = matchMedia('(pointer: coarse)');
 const mobile = () => matchMedia('(max-width:760px)').matches;
 const TEXT_TYPES = /\.(txt|md|csv|json|js|ts|py|html|css)$/i;
-const optionLabels = {audience: 'Público', format: 'Formato', tone: 'Tom', language: 'Linguagem', expected: 'Esperado', observed: 'Erro observado'};
+const optionLabels = {audience: 'Público', format: 'Formato', tone: 'Tom', language: 'Linguagem', expected: 'Esperado', observed: 'Erro observado', style: 'Estilo', ratio: 'Proporção'};
 const prompt = $('#prompt'), composer = $('#composer');
 
 const state = {user: null, chats: [], catalog: null, catalogAt: 0, model: '', view: 'chat', current: null, temporary: false, tmp: [],
@@ -28,6 +30,7 @@ function stored(key, allowed) { try { const v = localStorage.getItem(key) || '';
 function remember(key, value) { try { value ? localStorage.setItem(key, value) : localStorage.removeItem(key); } catch {} }
 const EFFORTS = [['', 'Automático', 'O modelo decide quanto pensar'], ['low', 'Baixo', 'Responde mais rápido'], ['medium', 'Médio', 'Equilíbrio entre rapidez e cuidado'], ['high', 'Alto', 'Pensa mais antes de responder']];
 const effortName = v => EFFORTS.find(e => e[0] === (v || ''))[1];
+const entryOf = m => models().find(x => x.id === canon(m?.model));
 const CONTINUE = 'Continue a resposta exatamente de onde parou, sem repetir o que já foi escrito.';
 // Texto de uma resposta somado às partes que vieram por “Continuar resposta”.
 const continued = (rows, i) => rows[i]?.truncated && rows[i + 1]?.role === 'user' && rows[i + 1].content === CONTINUE && rows[i + 2]?.role === 'assistant';
@@ -37,15 +40,31 @@ function chainText(rows, i) {
   return text;
 }
 const filesOf = i => { const rows = messages(); return rows[i] ? projectFiles(chainText(rows, i)) : []; };
-function filesPanel(files, i) {
-  const box = document.createElement('section'); box.className = 'files'; box.setAttribute('aria-label', 'Arquivos gerados');
+// Arquivos “enviados no chat”: um arquivo vira um anexo; dois ou mais viram um .zip.
+function attachmentCard(files, i) {
+  const box = document.createElement('section'); box.className = 'attach'; box.setAttribute('aria-label', 'Arquivos enviados na resposta');
   const bytes = files.reduce((n, f) => n + new Blob([f.code]).size, 0), broken = files.some(f => f.incomplete);
-  box.innerHTML = '<header>' + icon('archive') + '<div><b>Arquivos gerados</b><small>' + files.length + (files.length === 1 ? ' arquivo' : ' arquivos') + ' · ' + formatBytes(bytes) + '</small></div>' +
-    '<button type="button" class="primary" data-zip="' + i + '">' + icon('download') + 'Baixar .zip</button></header><ul>' +
-    files.map((f, k) => '<li>' + icon('file') + '<span class="fpath">' + esc(f.path) + '</span><small>' + esc([f.lang, f.lines + (f.lines === 1 ? ' linha' : ' linhas')].filter(Boolean).join(' · ')) + '</small>' +
-      (f.incomplete ? '<span class="tagc warn">incompleto</span>' : '') + '<button type="button" class="mini" data-file="' + i + ':' + k + '" aria-label="Baixar ' + esc(f.path) + '">' + icon('download') + 'Baixar</button></li>').join('') + '</ul>' +
+  const single = files.length === 1 ? files[0] : null;
+  const name = single ? single.path : zipName(state.temporary ? 'conversa-temporaria' : current()?.title);
+  const meta = single ? [single.lang, single.lines + (single.lines === 1 ? ' linha' : ' linhas'), formatBytes(bytes)].filter(Boolean).join(' · ')
+    : files.length + ' arquivos · ' + formatBytes(bytes) + ' · ' + files.map(f => f.path.split('/').pop()).slice(0, 4).join(', ') + (files.length > 4 ? '…' : '');
+  box.innerHTML = '<span class="aicon">' + icon(single ? 'file' : 'archive') + '</span><div class="ainfo"><b></b><small></small></div><div class="aact">' +
+    '<button type="button" class="secondary" ' + (single ? 'data-view-path="' + esc(single.path) + '"' : 'data-view-all="' + i + '"') + '>' + icon('eye') + (single ? 'Ver' : 'Ver arquivos') + '</button>' +
+    '<button type="button" class="primary" ' + (single ? 'data-file="' + i + ':0"' : 'data-zip="' + i + '"') + '>' + icon('download') + (single ? 'Baixar' : 'Baixar .zip') + '</button></div>' +
     (broken ? '<p class="note">' + icon('alert') + 'Um arquivo ficou incompleto porque a resposta foi cortada. Use “Continuar resposta” antes de baixar.</p>' : '');
+  box.querySelector('b').textContent = name; box.querySelector('small').textContent = meta;
   return box;
+}
+// Itens do visualizador a partir dos arquivos de uma resposta.
+const viewItems = files => files.map(f => ({kind: 'code', path: f.path, lang: f.lang, code: f.code, incomplete: f.incomplete}));
+const imageItems = (m, i) => (m.images || []).map((src, k) => ({kind: 'image', src, name: (m.role === 'user' ? 'anexo-' : 'imagem-') + (i + 1) + '-' + (k + 1), alt: m.role === 'user' ? 'Imagem anexada' : 'Imagem gerada ' + (k + 1),
+  caption: m.role === 'user' ? 'Imagem enviada por você' : 'Imagem criada por ' + (m.route?.name || 'Jack AI')}));
+async function zipImages(i) {
+  const m = messages()[i];
+  const files = await Promise.all((m?.images || []).map(async (src, k) => { const blob = await blobOf(src); return {path: 'imagem-' + (k + 1) + '.' + ({'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif'}[blob.type] || 'png'), data: new Uint8Array(await blob.arrayBuffer())}; }));
+  const name = zipName((state.temporary ? 'imagens' : current()?.title) + ' imagens');
+  saveFile(name, new Blob([makeZip(files)], {type: 'application/zip'}));
+  toast(name + ' baixado com ' + files.length + ' imagens.');
 }
 function downloadZip(i) {
   const files = filesOf(i);
@@ -263,7 +282,8 @@ function messageEl(m, i, rows) {
     el.innerHTML = '<div class="msgtext"></div>' + (m.files?.length ? '<div class="msgfiles">' + m.files.map(f => '<span>' + icon('file') + esc(f.name) + (f.size ? ' · ' + formatBytes(f.size) : '') + '</span>').join('') + '</div>' : '') +
       (m.options ? '<p class="msgopts">' + esc(Object.entries(m.options).map(([k, v]) => (optionLabels[k] || k) + ': ' + v).join(' · ')) + '</p>' : '');
     el.querySelector('.msgtext').textContent = m.content;
-    for (const src of m.images || []) { const img = document.createElement('img'); img.src = src; img.alt = 'Imagem anexada'; img.className = 'attached'; el.append(img); }
+    (m.images || []).forEach((src, k) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'thumb attached'; b.dataset.viewImage = i + ':' + k; b.setAttribute('aria-label', 'Abrir a imagem anexada no visualizador');
+      const img = document.createElement('img'); img.src = src; img.alt = 'Imagem anexada'; b.append(img); el.append(b); });
     const tools = document.createElement('div'); tools.className = 'msgtools';
     tools.innerHTML = '<button type="button" class="mini" data-copy="' + i + '">' + icon('copy') + 'Copiar</button>' + (state.job ? '' : '<button type="button" class="mini" data-edit="' + i + '">' + icon('edit') + 'Editar</button>');
     el.append(tools);
@@ -283,8 +303,19 @@ function messageEl(m, i, rows) {
     d.ontoggle = () => { d.open ? state.openReasoning.add(i) : state.openReasoning.delete(i); };
   }
   const body = el.querySelector('.msgtext');
-  if (m.streaming && !m.content) body.innerHTML = '<span class="typing" role="status">' + (m.reasoning ? 'Pensando' : 'Gerando resposta') + '<i aria-hidden="true"><b></b><b></b><b></b></i></span>';
-  else renderMessage(body, m.content);
+  if (m.images?.length) {
+    const g = document.createElement('div'); g.className = 'gallery' + (m.images.length === 1 ? ' one' : '');
+    g.innerHTML = m.images.map((src, k) => '<button type="button" class="thumb" data-view-image="' + i + ':' + k + '" aria-label="Abrir a imagem ' + (k + 1) + ' no visualizador"><img src="' + esc(src) + '" alt="Imagem gerada ' + (k + 1) + '" decoding="async"></button>').join('');
+    body.before(g);
+    if (m.images.length > 1 && !m.streaming) {
+      const z = document.createElement('div'); z.className = 'attach slim';
+      z.innerHTML = '<span class="aicon">' + icon('archive') + '</span><div class="ainfo"><b>' + m.images.length + ' imagens</b><small>Toque numa imagem para ver em tela cheia</small></div><div class="aact"><button type="button" class="primary" data-zip-images="' + i + '">' + icon('download') + 'Baixar .zip</button></div>';
+      g.after(z);
+    }
+  }
+  const imaging = m.streaming && (entryOf(m)?.output === 'image' || entryOf(m)?.capabilities?.image);
+  if (m.streaming && !m.content) body.innerHTML = m.images?.length ? '' : '<span class="typing" role="status">' + (imaging ? 'Criando imagem' : m.reasoning ? 'Pensando' : 'Gerando resposta') + '<i aria-hidden="true"><b></b><b></b><b></b></i></span>';
+  else renderMessage(body, m.content, {files: true});
   if (m.sources?.length) {
     const box = document.createElement('nav'); box.className = 'sources'; box.setAttribute('aria-label', 'Fontes da pesquisa na web');
     box.innerHTML = '<h3>' + icon('globe') + 'Fontes</h3><ol>' + m.sources.map(src => { let host = ''; try { host = new URL(src.url).hostname.replace(/^www\./, ''); } catch {}
@@ -292,8 +323,9 @@ function messageEl(m, i, rows) {
     el.append(box);
   }
   if (!m.streaming && !continued(rows, i)) {
+    // SVG sozinho aparece só como imagem; arquivos de código e conjuntos viram anexo (.zip se 2 ou mais).
     const files = projectFiles(chainText(rows, i));
-    if (files.length) el.append(filesPanel(files, i));
+    if (files.length > 1 || (files.length === 1 && !isSvg(files[0]))) el.append(attachmentCard(files, i));
   }
   if (m.truncated && !m.streaming && !m.status) {
     const box = document.createElement('div'); box.className = 'status';
@@ -382,6 +414,9 @@ function renderComposer() {
   const note = $('#tempnote');
   note.hidden = !state.temporary;
   note.innerHTML = '<strong>Chat temporário ativo.</strong> Esta conversa e o rascunho ficam só nesta aba: não entram no histórico, não são salvos no servidor e somem ao recarregar ou fechar. O provedor do modelo ainda recebe as mensagens e aplica a própria política de retenção.';
+  const imageMode = m?.output === 'image' || (m?.kind === 'route' && m?.capabilities?.image);
+  $('#effort').hidden = $('#web').hidden = !!imageMode;
+  prompt.placeholder = imageMode ? 'Descreva a imagem ou a figurinha…' : 'Pergunte ao Jack AI…';
   const reasoning = !!m?.capabilities?.reasoning, eff = $('#effort');
   $('#effortlabel').textContent = state.effort ? 'Esforço ' + effortName(state.effort).toLowerCase() : 'Esforço';
   eff.classList.toggle('active', !!state.effort); eff.classList.toggle('off', !!m && !reasoning);
@@ -527,12 +562,13 @@ function continueReply() {
   if (!model?.available) return unavailableNotice(model || {name: 'O modelo escolhido'});
   stream({kind: 'send', payload: {model: model.id, content: CONTINUE, requestId: uuid(), ...tools()}});
 }
-const forHistory = m => ({role: m.role, content: m.content, ...(m.role === 'user' && m.files?.length ? {files: m.files.map(({name, size, text, data}) => data ? {name, size, data} : {name, size, text})} : {}), ...(m.role === 'user' && m.images?.length ? {images: m.images} : {})});
+const forHistory = m => ({role: m.role, content: m.content, ...(m.role === 'user' && m.files?.length ? {files: m.files.map(({name, size, text, data}) => data ? {name, size, data} : {name, size, text})} : {}), ...(m.images?.length ? {images: m.role === 'user' ? m.images : m.images.slice(-1)} : {})});
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function stream({kind, payload, at, fromComposer = false}) {
   if (state.job) return;
   const controller = new AbortController();
-  state.job = {controller, kind, started: Date.now()}; state.alternatives = null; state.notice = null;
+  state.job = {controller, kind, started: Date.now(), id: uuid()}; state.alternatives = null; state.notice = null;
+  const job = state.job.id;
   const temp = state.temporary;
   let chatId = state.current, created = false, accepted = false, done = false, streamError = '', alternatives = null;
   let rows, user = null, assistant, previous = null, removed = [];
@@ -557,7 +593,7 @@ async function stream({kind, payload, at, fromComposer = false}) {
     }
     state.view = 'chat'; state.stick = true; render(); scrollToEnd(true);
     const r = await fetch('/api/generate', {method: 'POST', headers: {'Content-Type': 'application/json'}, signal: controller.signal,
-      body: JSON.stringify({...payload, id: temp ? undefined : chatId, history})});
+      body: JSON.stringify({...payload, id: temp ? undefined : chatId, history, job})});
     if (!r.ok) { let data = {}; try { data = await r.json(); } catch {} throw Object.assign(new Error(data.error || 'O servidor recusou o envio (HTTP ' + r.status + ').'), {before: true, alternatives: data.alternatives}); }
     accepted = true;
     if (user) user.pending = false;
@@ -577,6 +613,7 @@ async function stream({kind, payload, at, fromComposer = false}) {
         if (ev.route) { assistant.route = ev.route; paintStreaming(); }
         if (ev.delta) { assistant.content += ev.delta; paintStreaming(); }
         if (ev.reasoning) { assistant.reasoning = (assistant.reasoning || '') + ev.reasoning; paintStreaming(); }
+        if (ev.image) { assistant.images = [...(assistant.images || []), ev.image]; paintStreaming(); }
         if (ev.sources) { assistant.sources = ev.sources; paintStreaming(); }
         if (ev.truncated) assistant.truncated = true;
         if (ev.error) { streamError = ev.error; alternatives = ev.alternatives; }
@@ -621,7 +658,7 @@ async function stream({kind, payload, at, fromComposer = false}) {
       } else if (kind === 'regenerate') {
         if (assistant.content) {
           const versions = previous.versions ? [...previous.versions] : [{content: previous.content, model: previous.model, route: previous.route, status: previous.status}];
-          const extra = Object.fromEntries(['reasoning', 'sources', 'truncated', 'effort', 'web'].filter(k => assistant[k]).map(k => [k, assistant[k]]));
+          const extra = Object.fromEntries(['reasoning', 'sources', 'truncated', 'effort', 'web', 'images'].filter(k => assistant[k]).map(k => [k, assistant[k]]));
           versions.push({content: assistant.content, model: payload.model, route: assistant.route, ...extra, ...(streamError ? {status: streamError} : {})});
           rows[at] = {role: 'assistant', content: assistant.content, model: payload.model, route: assistant.route, versions, selected: versions.length - 1, ...extra, ...(streamError ? {status: streamError} : {})};
         } else { rows[at] = previous; if (streamError) toast(streamError); }
@@ -644,7 +681,7 @@ async function selectVersion(i, v) {
   if (state.job) return;
   const rows = messages(), m = rows[i];
   if (!m?.versions?.[v]) return;
-  if (state.temporary) { const x = m.versions[v]; rows[i] = {...m, content: x.content, model: x.model, route: x.route, status: x.status, reasoning: x.reasoning, sources: x.sources, truncated: x.truncated, effort: x.effort, web: x.web, selected: v}; }
+  if (state.temporary) { const x = m.versions[v]; rows[i] = {...m, content: x.content, model: x.model, route: x.route, status: x.status, reasoning: x.reasoning, sources: x.sources, truncated: x.truncated, effort: x.effort, web: x.web, images: x.images, selected: v}; }
   else { const saved = await api('chats/' + state.current + '/messages/' + i, 'PATCH', {selected: v}); const k = state.chats.findIndex(c => c.id === saved.id); state.chats[k] = saved; }
   state.stick = false; renderThread();
   $('#messages article[data-index="' + i + '"] [data-version]:not([disabled])')?.focus();
@@ -780,7 +817,24 @@ function toggleWeb() {
 const SHORTCUTS = [['Ctrl/⌘ + K', 'Nova conversa'], ['Ctrl/⌘ + /', 'Buscar conversas'], ['Enter', 'Enviar mensagem (no computador)'], ['Shift + Enter', 'Nova linha'],
   ['Esc', 'Fechar menu, seletor ou diálogo; com o foco nas mensagens, interrompe a resposta'], ['Ctrl/⌘ + Shift + C', 'Copiar a última resposta'], ['Ctrl/⌘ + Shift + E', 'Trocar o nível de esforço'], ['?', 'Mostrar estes atalhos']];
 function shortcuts() {
-  dialog('Atalhos de teclado', '<dl class="keys">' + SHORTCUTS.map(([k, v]) => '<div><dt>' + k.split(' + ').map(x => '<kbd>' + esc(x) + '</kbd>').join(' + ') + '</dt><dd>' + esc(v) + '</dd></div>').join('') + '</dl>');
+  dialog('Atalhos de teclado', '<dl class="keys">' + SHORTCUTS.map(([k, v]) => '<div><dt>' + k.split(' + ').map(x => '<kbd>' + esc(x) + '</kbd>').join(' + ') + '</dt><dd>' + esc(v) + '</dd></div>').join('') + '</dl>' +
+    '<div class="actions">' + button('tour', icon('spark') + 'Ver tutorial guiado') + '</div>');
+}
+// Tutorial guiado: abre sozinho no primeiro acesso com conta e pode ser revisto em Configurações.
+function runTour() {
+  if (document.querySelector('.tour')) return;
+  if (picker.open) picker.hide?.();
+  closeMobileNav();
+  if (state.view !== 'chat') { if (busy()) return; saveDraft(); state.view = 'chat'; setHash(); render(); }
+  startTour(tourSteps({name: state.user?.name, account: !!state.user?.email}), {
+    mobile, openSidebar: () => { document.body.classList.add('mobileopen'); syncNavigation(); }, closeSidebar: closeMobileNav,
+    focusAfter: () => prompt,
+    done: async completed => {
+      if (!completed) toast('Tutorial fechado. Para rever, abra Configurações e toque em “Ver tutorial guiado”.');
+      if ((state.user?.prefs?.tour || 0) >= TOUR_VERSION) return;
+      try { const r = await api('tour', 'POST', {version: TOUR_VERSION}); if (state.user) state.user.prefs.tour = r.tour; } catch {}
+    }
+  });
 }
 async function copyLast() {
   const last = [...messages()].reverse().find(m => m.role === 'assistant' && m.content);
@@ -818,7 +872,7 @@ function settings() {
     '<p class="note">Conversas temporárias ficam apenas na aba aberta. Ao enviar uma mensagem, o provedor do modelo recebe o contexto da conversa.</p>' +
     (u.email ? '<h3 class="sub">Conta</h3><p class="note">' + esc(u.email) + '</p><div class="actions">' + google + button('logoutAll', icon('logout') + 'Sair de todos os dispositivos') + button('logout', 'Sair') + '</div>' : (u.auth?.google ? '<div class="actions">' + button('google', icon('login') + 'Continuar com Google') + button('login', 'Entrar com e-mail') + '</div>' : '')) +
     '<h3 class="sub">Seus dados</h3><div class="actions"><a class="secondary btnlink" href="/api/export" download>' + icon('download') + 'Baixar meus dados (.json)</a>' + button('clearChats', icon('trash') + 'Excluir todas as conversas') + button('deleteAccount', 'Excluir conta e dados') + '</div>' +
-    '<div class="actions">' + button('shortcuts', icon('keyboard') + 'Atalhos de teclado') + button('library', 'Biblioteca de modelos') + '</div>');
+    '<div class="actions">' + button('tour', icon('spark') + 'Ver tutorial guiado') + button('shortcuts', icon('keyboard') + 'Atalhos de teclado') + button('library', 'Biblioteca de modelos') + '</div>');
 }
 function auth(mode = 'login') {
   const reg = mode === 'register', rec = mode === 'recover';
@@ -900,6 +954,7 @@ async function action(a, el) {
   if (a === 'google') return googleStart('login');
   if (a === 'linkGoogle') return googleStart('link');
   if (a === 'shortcuts') return shortcuts();
+  if (a === 'tour') { closeDialog(); return runTour(); }
   if (a === 'effort') return effortMenu(el);
   if (a === 'web') return toggleWeb();
   if (a === 'dictate') return dictate();
@@ -924,6 +979,15 @@ document.addEventListener('click', guard(async e => {
   if (d.continue !== undefined) return continueReply();
   if (d.speak !== undefined) return speak(Number(d.speak));
   if (d.zip !== undefined) return downloadZip(Number(d.zip));
+  if (d.zipImages !== undefined) return zipImages(Number(d.zipImages));
+  if (d.viewAll !== undefined) return openViewer(viewItems(filesOf(Number(d.viewAll))), 0, el, toast);
+  if (d.viewImage) { const [i, k] = d.viewImage.split(':').map(Number), m = messages()[i]; return m && openViewer(imageItems(m, i), k, el, toast); }
+  if (d.viewPath) {
+    const i = Number(el.closest('article')?.dataset.index), files = Number.isInteger(i) ? filesOf(i) : [], k = files.findIndex(f => f.path === d.viewPath);
+    if (k >= 0) return openViewer(viewItems(files), k, el, toast);
+    if (el._file) return openViewer(viewItems([el._file]), 0, el, toast);
+    return;
+  }
   if (d.file) { const [i, k] = d.file.split(':').map(Number), f = filesOf(i)[k]; if (f) { saveFile(f.path, f.code.endsWith('\n') ? f.code : f.code + '\n'); toast(f.path.split('/').pop() + ' baixado.'); } return; }
   if (d.version) { const [i, v] = d.version.split(':').map(Number); return selectVersion(i, v); }
   if (d.switch) { setModel(d.switch); toast('Modelo trocado. Use “Tentar novamente” para reenviar.'); return; }
@@ -936,7 +1000,13 @@ document.addEventListener('click', guard(async e => {
 }));
 $('#modelbtn').addEventListener('click', () => picker.toggle());
 // Um segundo clique logo após o envio (clique duplo) não interrompe nem duplica a mensagem.
-composer.addEventListener('submit', e => { e.preventDefault(); if (state.job) { if (Date.now() - state.job.started > 700) state.job.controller.abort(); return; } guard(submit)(); });
+// Interromper: corta o fluxo no navegador e avisa o servidor, que grava o trecho recebido.
+function stopJob() {
+  const j = state.job; if (!j || j.controller.signal.aborted) return;
+  j.controller.abort();
+  fetch('/api/stop', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({job: j.id}), keepalive: true}).catch(() => {});
+}
+composer.addEventListener('submit', e => { e.preventDefault(); if (state.job) { if (Date.now() - state.job.started > 700) stopJob(); return; } guard(submit)(); });
 document.addEventListener('submit', guard(async e => {
   const form = e.target;
   if (form === composer) return;
@@ -975,7 +1045,7 @@ document.addEventListener('keydown', e => {
   if (e.key === '?' && !e.ctrlKey && !e.metaKey && !$('#dialog').open && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) && !document.activeElement?.isContentEditable) { e.preventDefault(); shortcuts(); }
   if (e.key === 'Escape' && !$('#dialog').open && !menu && !picker.open && document.body.classList.contains('mobileopen')) { closeMobileNav(); $('.menu').focus(); }
 });
-$('#messages').addEventListener('keydown', e => { if (e.key === 'Escape' && state.job) state.job.controller.abort(); });
+$('#messages').addEventListener('keydown', e => { if (e.key === 'Escape' && state.job) stopJob(); });
 addEventListener('hashchange', () => {
   const h = location.hash;
   if (h.startsWith('#/c/')) { const id = h.slice(4); if (state.chats.some(c => c.id === id)) openChat(id, {focus: false}); }
@@ -1035,6 +1105,7 @@ async function initialize() {
     else if (!state.temporary) restoreDraft(null);
     render(); scrollToEnd(true);
     if (!coarse.matches) prompt.focus({preventScroll: true});
+    if (state.user.email && (state.user.prefs?.tour || 0) < TOUR_VERSION) setTimeout(runTour, 450);
   } catch { $('#connection').hidden = false; }
 }
 $('#reconnect').onclick = initialize;

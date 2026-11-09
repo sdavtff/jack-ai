@@ -1,6 +1,6 @@
 # Jack AI
 
-A edição atual traz o redesign de novembro de 2026: início focado na primeira mensagem, perfis Jack AI Flash, Pro, Studio e Code, catálogo só com modelos pagos de 2026 separados por fornecedor, nível de esforço ajustável com raciocínio visível, pesquisa na web com fontes, código entregue como arquivos com download em .zip, PDFs, ditado, leitura em voz alta, [login com Google](GOOGLE_LOGIN.md) e o [Estúdio com Medidas, Dados e Texto e código](ESTUDIO.md).
+A edição atual traz o redesign de novembro de 2026: início focado na primeira mensagem, perfis Jack AI Flash, Pro, Studio, Code e Imagem, catálogo só com modelos pagos de 2026 separados por fornecedor, nível de esforço ajustável com raciocínio visível, pesquisa na web com fontes, criação de imagens e figurinhas, visualizador próprio para imagens e arquivos, código entregue como arquivos (2 ou mais chegam num .zip), tutorial guiado depois do login, PDFs, ditado, leitura em voz alta, [login com Google](GOOGLE_LOGIN.md) e o [Estúdio com Medidas, Dados e Texto e código](ESTUDIO.md).
 
 Leia [ATUALIZACAO.md](ATUALIZACAO.md) para atualizar uma instalação existente e [ENTREGA.md](ENTREGA.md) para o relatório da entrega, com testes e tabela de modelos.
 
@@ -30,13 +30,15 @@ Para gerar a primeira resposta, preencha `OPENROUTER_API_KEY` em `.env`, reinici
 | Camada | Arquivos | Responsabilidade |
 | --- | --- | --- |
 | Navegador | public/index.html, app.js, style.css, icons.js, picker.js, library.js, workspace.js | Workspace responsivo, seletor de modelos, Biblioteca, rascunhos, anexos, preferências e consumo progressivo da resposta |
+| Arquivos e imagens | public/files.js, zip.js, viewer.js | Arquivos tirados dos blocos de código, .zip montado no navegador, visualizador de imagens e código, figurinha WebP |
+| Tutorial | public/tour.js | Tutorial guiado com destaque de cada ferramenta, teclado e celular |
 | Estúdio | public/studio/view.js, catalog.js, data.js, text.js | Medidas, CSV e texto/JSON executados no navegador |
 | Catálogo | models.config.mjs, catalog.mjs | Fonte única dos perfis Jack AI e das rotas pagas por fornecedor, regras de acesso, preços e verificação mínima |
 | Conteúdo | public/render.js, math.js, render.css, vendor/marked/ | Markdown convertido em nós DOM, realce léxico, cópia e subconjunto de TeX em MathML |
 | Identidade visual | public/logo.svg, ring.webp, orbit.svg, vendor/inter | Marca, anel de linhas e fonte Inter (OFL) incluídos localmente |
 | API | server.mjs | Sessões, validação, limites, controle de acesso e streaming NDJSON para o navegador |
 | Adaptador | providers.mjs | Descoberta das rotas pagas do catálogo no OpenRouter, esforço de raciocínio, pesquisa na web, PDFs, envio de contexto e conversão do fluxo SSE |
-| Persistência | migrations/001.sql, 002.sql, 003.sql | Usuários, tokens de sessão com hash, preferências, histórico por proprietário e verificações de rota |
+| Persistência | migrations/001.sql, 002.sql, 003.sql, 004.sql | Usuários, tokens de sessão com hash, preferências, histórico por proprietário, verificações de rota e imagens geradas (`media`) |
 
 O navegador envia o cookie de sessão à API da própria origem. O servidor identifica o usuário, carrega o histórico, resolve o perfil Jack AI ou a rota escolhida no catálogo, acrescenta as instruções do perfil e as personalizadas e chama a rota real. O primeiro evento do streaming informa a rota usada. Os fragmentos chegam ao navegador conforme o provedor os envia. A pergunta é salva antes da geração. A resposta é gravada ao concluir ou interromper o fluxo. Uma queda abrupta do processo pode perder o texto parcial. Conversas temporárias usam a memória da aba e seguem para o provedor quando enviadas.
 
@@ -45,8 +47,11 @@ O navegador envia o cookie de sessão à API da própria origem. O servidor iden
 - **Primeira mensagem**. Escreva no campo “Pergunte ao Jack AI…” ou toque em uma sugestão: ela preenche o campo e seleciona o trecho a completar. Enter envia e Shift+Enter quebra a linha no computador. No celular, Enter quebra a linha e o botão envia.
 - **Modelos**. O seletor do campo tem busca por nome ou fornecedor, favoritos e o modelo ativo marcado. Os perfis Jack AI aparecem primeiro. A Biblioteca filtra por tarefa e capacidade e mostra contexto, formatos aceitos, hospedagem e verificação de cada rota.
 - **Conversas**. A lateral tem Nova conversa, a busca por título e conteúdo e o Histórico. O menu de cada conversa permite renomear, fixar, arquivar e excluir. Cada conversa guarda seu rascunho, que continua lá depois de recarregar.
-- **Respostas**. É possível interromper a geração (o trecho recebido fica salvo), copiar a resposta ou um bloco de código e gerar uma nova versão, com navegação entre as versões. Clique duplo ou nova tentativa não duplicam mensagens.
-- **Anexos**. Até quatro por mensagem: texto, Markdown, CSV, JSON e código de até 80 KB, além de uma imagem PNG, JPEG ou WebP de até 1,8 MB para modelos com análise de imagens. Não há leitor de PDF, áudio ou documentos de escritório.
+- **Respostas**. É possível interromper a geração (o trecho recebido fica salvo), copiar a resposta e gerar uma nova versão, com navegação entre as versões. Clique duplo ou nova tentativa não duplicam mensagens.
+- **Arquivos**. Código com nome de arquivo vira um cartão na conversa. Uma resposta com um arquivo traz “Ver” e “Baixar”; com 2 ou mais, um único anexo .zip. “Ver” abre o visualizador, com uma aba por arquivo, setas, Copiar e Baixar.
+- **Imagens e figurinhas**. O Jack AI Imagem cria e edita imagens (Estilo e Proporção ao lado do campo). As imagens aparecem no chat; um toque abre o visualizador com Tamanho real, Baixar e Figurinha (WebP 512 × 512, fundo liso removido). Fotos anexadas e figurinhas em SVG também abrem no visualizador.
+- **Tutorial guiado**. Abre sozinho no primeiro acesso com conta e mostra cada ferramenta passo a passo. Setas, Enter e Esc funcionam. Para rever, use Configurações › Ver tutorial guiado.
+- **Anexos**. Até quatro por mensagem: texto, Markdown, CSV, JSON e código de até 80 KB, uma imagem PNG, JPEG ou WebP de até 1,8 MB para modelos com análise de imagens e um PDF de até 2 MB. Não há leitor de áudio ou documentos de escritório.
 - **Chat temporário**. O botão fica ao lado do campo. A conversa e o rascunho ficam só na memória da aba, somem ao recarregar e não chegam ao servidor do Jack AI. O provedor do modelo ainda recebe as mensagens.
 - **Estúdio**. Medidas, Dados (CSV) e Texto e código. “Usar na conversa” abre uma prévia editável e deixa escolher a conversa de destino. Nada é enviado sem confirmação.
 - **Exportação**. TXT e Markdown exportam o conteúdo textual. PDF abre a impressão formatada do navegador.
@@ -83,7 +88,7 @@ As chaves ficam no ambiente do servidor. O provedor recebe o histórico necessá
 | Streaming | Teste de contrato ponta a ponta executado entre a API, SQLite e um servidor HTTP local de teste com o formato do OpenRouter. Verifica fragmentos, edição e ausência de persistência no modo temporário. |
 | Inferência real | Pendente. O ambiente não forneceu uma chave do OpenRouter com créditos. O script scripts/check-provider.mjs permite realizar o teste após configurar. |
 | Navegador e console | Sem erros de JavaScript nos fluxos testados. A exportação em PDF e um dispositivo físico com teclado virtual continuam sem validação. |
-| Interface | 92 verificações em Chromium headless (1440 px e 390 px) com `tests/capture.py`, incluindo teclado, rascunhos, interrupção, falha com nova tentativa, anexo incompatível, Biblioteca sem tokens nem US$, menu de esforço, raciocínio, fontes da web, “Continuar resposta”, PDF, atalhos, login com Google, Chat temporário após recarregar e auditoria axe-core. Teclado virtual testado por emulação. |
+| Interface | 138 verificações em Chromium headless (1440 px e 390 px) com `tests/capture.py`, incluindo teclado, rascunhos, interrupção, falha com nova tentativa, anexo incompatível, Biblioteca sem tokens nem US$, menu de esforço, raciocínio, fontes da web, “Continuar resposta”, PDF, arquivos e .zip, visualizador, Jack AI Imagem, figurinha WebP, tutorial guiado, atalhos, login com Google, Chat temporário após recarregar e auditoria axe-core. Teclado virtual testado por emulação. |
 | Material visual | As capturas em screenshots/ são reais e foram feitas com o servidor de contrato. A conversa mostrada não comprova inferência. Os mockups antigos estão em screenshots/anterior/. |
 
 Para repetir os testes, use `npm test`. Os servidores de contrato em `tests/support/` só são usados nos testes e não entram no build publicado. Para as capturas e a verificação da interface, siga as instruções no topo de `tests/capture.py` (Playwright Python e Chrome ou Chromium).

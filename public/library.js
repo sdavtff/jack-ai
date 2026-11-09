@@ -3,8 +3,8 @@ import {icon} from './icons.js';
 import {groupModels} from './workspace.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
-const tasks = [['todas', 'Todas'], ['conversa', 'Conversa'], ['escrita', 'Escrita'], ['codigo', 'Código'], ['analise', 'Análise'], ['conteudo', 'Conteúdo']];
-const caps = [['texto', 'Texto', m => m.capabilities?.text], ['codigo', 'Código', m => m.tasks?.includes('codigo')], ['imagens', 'Análise de imagens', m => m.capabilities?.vision],
+const tasks = [['todas', 'Todas'], ['conversa', 'Conversa'], ['escrita', 'Escrita'], ['codigo', 'Código'], ['analise', 'Análise'], ['conteudo', 'Conteúdo'], ['imagem', 'Imagens']];
+const caps = [['texto', 'Texto', m => m.capabilities?.text], ['codigo', 'Código', m => m.tasks?.includes('codigo')], ['imagens', 'Análise de imagens', m => m.capabilities?.vision], ['criaimagens', 'Cria imagens', m => m.capabilities?.image],
   ['arquivos', 'Leitura de arquivos', m => m.capabilities?.files], ['longo', 'Contexto longo', m => m.capabilities?.longContext]];
 const inputNames = {text: 'texto', image: 'imagem', file: 'arquivo (PDF)', audio: 'áudio', video: 'vídeo'};
 const filter = {task: 'todas', caps: new Set(), query: '', onlyAvailable: false};
@@ -12,6 +12,7 @@ const date = v => v ? new Date(v).toLocaleString('pt-BR', {dateStyle: 'short', t
 const day = v => v ? new Date(v + 'T12:00:00').toLocaleDateString('pt-BR', {day: 'numeric', month: 'long', year: 'numeric'}) : '';
 
 function formats(m) {
+  if (m.capabilities?.image) return 'Cria imagens a partir de texto' + (m.capabilities?.vision ? ' e edita uma foto enviada (PNG, JPEG ou WebP de até 1,8 MB)' : '') + '. As imagens aparecem na conversa e abrem no visualizador do site.';
   return 'Texto digitado, arquivos .txt, .md, .csv, .json, .js, .ts, .py, .html e .css de até 80 KB e um PDF de até 2 MB' + (m.capabilities?.vision ? '; imagens PNG, JPEG e WebP de até 1,8 MB' : '') +
     (m.capabilities?.files ? '. Lê PDF de forma nativa' : '. PDFs são convertidos em texto antes de chegar ao modelo') + '.';
 }
@@ -52,7 +53,8 @@ function card(m, catalog, current, favorites) {
     : esc(m.vendor) + (m.host && m.host !== m.vendor ? ' · via ' + esc(m.host) : '');
   const t = [];
   if (m.capabilities?.longContext) t.push('<span class="tagc">Contexto longo</span>');
-  if (m.capabilities?.vision) t.push('<span class="tagc">Imagens</span>');
+  if (m.capabilities?.image) t.push('<span class="tagc">Cria imagens</span>');
+  else if (m.capabilities?.vision) t.push('<span class="tagc">Imagens</span>');
   if (m.capabilities?.files) t.push('<span class="tagc">PDF</span>');
   if (m.capabilities?.reasoning) t.push('<span class="tagc">Esforço ajustável</span>');
   if (m.preview) t.push('<span class="tagc preview">Prévia</span>');

@@ -4,7 +4,7 @@ import {randomUUID, randomBytes, createHash, scrypt, timingSafeEqual} from 'node
 import {promisify} from 'node:util';
 import {readFile, mkdir, stat} from 'node:fs/promises';
 import path from 'node:path';
-import {listModels, generate, ping} from './providers.mjs';
+import {listModels, generate, generateImage, ping} from './providers.mjs';
 import {buildCatalog, resolveEntry, pendingChecks, routeSnapshot, canonicalId} from './catalog.mjs';
 import {profiles} from './models.config.mjs';
 
@@ -18,6 +18,7 @@ db.exec(await readFile('migrations/002.sql', 'utf8'));
 if (!db.prepare('PRAGMA table_info(chats)').all().some(c => c.name === 'archived')) db.exec('ALTER TABLE chats ADD COLUMN archived INTEGER DEFAULT 0');
 if (!db.prepare('PRAGMA table_info(users)').all().some(c => c.name === 'google_sub')) db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT');
 db.exec(await readFile('migrations/003.sql', 'utf8'));
+db.exec(await readFile('migrations/004.sql', 'utf8'));
 
 const sql = (q, ...args) => db.prepare(q).run(...args), one = (q, ...args) => db.prepare(q).get(...args);
 const digest = s => createHash('sha256').update(s).digest('hex');
@@ -25,7 +26,8 @@ const fail = (message, status = 400, extra) => { throw Object.assign(new Error(m
 const bounded = (s, max, min = 0) => typeof s === 'string' && s.length >= min && s.length <= max ? s : fail('Confira os dados informados.');
 async function hash(pass) { const salt = randomBytes(16).toString('hex'); return salt + ':' + (await derive(pass, salt, 64)).toString('hex'); }
 async function matches(pass, value) { if (!value) return false; const [salt, key] = value.split(':'); return timingSafeEqual(await derive(pass, salt, 64), Buffer.from(key, 'hex')); }
-const limits = new Map(), active = new Set();
+// jobs: geração em andamento por pessoa, para “Interromper” funcionar mesmo atrás de proxies que seguram a conexão.
+const limits = new Map(), active = new Set(), jobs = new Map();
 function limit(key, n) { const now = Date.now(); let row = limits.get(key); if (!row || row.end < now) { row = {count: 0, end: now + 60000}; limits.set(key, row); } if (++row.count > n) fail('Muitas tentativas. Aguarde um minuto.', 429); }
 setInterval(() => {
   for (const [k, v] of limits) if (v.end < Date.now()) limits.delete(k);
@@ -188,7 +190,7 @@ function cleanImages(list) {
 function cleanOptions(value) {
   if (!value || typeof value !== 'object') return null;
   const out = {};
-  for (const key of ['audience', 'format', 'tone', 'language', 'expected', 'observed']) if (typeof value[key] === 'string' && value[key].trim()) out[key] = value[key].trim().slice(0, 300);
+  for (const key of ['audience', 'format', 'tone', 'language', 'expected', 'observed', 'style', 'ratio']) if (typeof value[key] === 'string' && value[key].trim()) out[key] = value[key].trim().slice(0, 300);
   return Object.keys(out).length ? out : null;
 }
 function cleanHistory(list) {
@@ -197,10 +199,38 @@ function cleanHistory(list) {
     if (!m || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string') fail('Conversa inválida.');
     const row = {role: m.role, content: m.content.slice(0, 100000)};
     if (m.role === 'user') { const files = cleanFiles(m.files), images = cleanImages(m.images); if (files.length) row.files = files; if (images.length) row.images = images; }
+    else if (Array.isArray(m.images) && m.images.length) row.images = m.images.filter(i => typeof i === 'string' && mediaRule.test(i) && i.length < 12000000).slice(-1);
     return row;
   });
 }
-const optionLabels = {audience: 'Público', format: 'Formato', tone: 'Tom', language: 'Linguagem', expected: 'Comportamento esperado', observed: 'Erro observado'};
+const optionLabels = {audience: 'Público', format: 'Formato', tone: 'Tom', language: 'Linguagem', expected: 'Comportamento esperado', observed: 'Erro observado', style: 'Estilo', ratio: 'Proporção'};
+// --- Imagens geradas ----------------------------------------------------------------
+const mediaRule = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+=*)$/;
+function storeMedia(user, chat, dataUrl) {
+  const m = dataUrl.match(mediaRule);
+  if (!m) return null;
+  const id = randomUUID();
+  sql('INSERT INTO media(id,user,chat,mime,data,created) VALUES(?,?,?,?,?,?)', id, user, chat, m[1], Buffer.from(m[2], 'base64'), Date.now());
+  return '/api/media/' + id;
+}
+// Endereço /api/media/<id> (ou data URL de conversa temporária) → data URL para mandar ao modelo.
+function mediaData(user, ref) {
+  if (typeof ref !== 'string') return null;
+  if (mediaRule.test(ref)) return ref;
+  const id = ref.match(/^\/api\/media\/([\w-]{36})$/)?.[1];
+  const row = id && one('SELECT mime,data FROM media WHERE id=? AND user=?', id, user);
+  return row ? 'data:' + row.mime + ';base64,' + Buffer.from(row.data).toString('base64') : null;
+}
+const RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4'];
+const STYLE_HINTS = {
+  'Figurinha': 'Estilo figurinha (adesivo): um único personagem ou objeto centralizado, contorno branco grosso em volta, cores vivas, sem texto, fundo branco totalmente liso e uniforme.',
+  'Ilustração': 'Estilo ilustração digital, cores harmoniosas e traço limpo.',
+  'Foto realista': 'Fotografia realista, iluminação natural e alta nitidez.',
+  'Ícone': 'Ícone simples e plano, formas geométricas, poucas cores, fundo liso.',
+  'Logotipo': 'Logotipo limpo e memorável, formas simples, fundo branco liso.',
+  'Pixel art': 'Pixel art em 32 bits, paleta limitada, contornos nítidos.'
+};
+const imageStyle = options => STYLE_HINTS[Object.keys(STYLE_HINTS).find(k => String(options?.style || '').startsWith(k))] || '';
 // Conteúdo enviado ao provedor: arquivos de texto entram no corpo e imagens antigas
 // são substituídas por uma nota quando a rota escolhida não aceita imagens.
 function forProvider(m, vision, latest) {
@@ -208,6 +238,7 @@ function forProvider(m, vision, latest) {
   if (m.role === 'user' && m.files?.length) content += m.files.filter(f => f.kind !== 'pdf').map(f => '\n\n--- Arquivo: ' + f.name + ' ---\n' + f.text).join('');
   const pdfs = m.role === 'user' ? (m.files || []).filter(f => f.kind === 'pdf').map(f => ({name: f.name, data: f.data})) : [];
   if (m.role === 'user' && m.options) content = Object.entries(m.options).map(([k, v]) => optionLabels[k] + ': ' + v).join('\n') + '\n\n' + content;
+  if (m.role === 'assistant') return {role: 'assistant', content: (m.images?.length ? '[Imagem gerada nesta conversa]\n\n' : '') + (content || '') || '(mensagem vazia)'};
   const images = m.images?.length ? (vision ? m.images : null) : null;
   if (m.images?.length && !vision) content += '\n\n[Imagem anexada anteriormente omitida: o modelo atual não analisa imagens.]';
   if (!vision && latest && m.images?.length) fail('Escolha um modelo com análise de imagens.');
@@ -291,6 +322,13 @@ http.createServer(async (req, res) => {
       sql('DELETE FROM sessions WHERE token=?', token); session(res, found.id); return send(safe(found));
     }
     if (p === '/api/logout' && method === 'POST') { sql('DELETE FROM sessions WHERE token=?', token); return send({ok: true}); }
+    const mediaId = p.match(/^\/api\/media\/([\w-]{36})$/)?.[1];
+    if (mediaId && method === 'GET') {
+      const row = one('SELECT mime,data FROM media WHERE id=? AND user=?', mediaId, u.id);
+      if (!row) fail('Imagem não encontrada.', 404);
+      res.writeHead(200, {'Content-Type': row.mime, 'Cache-Control': 'private, max-age=31536000, immutable', 'Content-Length': row.data.length});
+      return res.end(Buffer.from(row.data));
+    }
     if (p === '/api/logout-all' && method === 'POST') { sql('DELETE FROM sessions WHERE user=?', u.id); return send({ok: true}); }
     if (p === '/api/export' && method === 'GET') {
       limit('export' + u.id, 6);
@@ -311,6 +349,17 @@ http.createServer(async (req, res) => {
       const prefs = {...old, theme: ['auto', 'dark', 'light'].includes(b.theme) ? b.theme : 'auto', instructions: bounded(b.instructions || '', 4000), temperature: Math.min(2, Math.max(0, Number(b.temperature) || 0)), maxTokens: Math.min(8192, Math.max(64, Number(b.maxTokens) || 1024))};
       sql('UPDATE users SET name=?,photo=?,prefs=? WHERE id=?', bounded(b.name, 80, 1), photo, JSON.stringify(prefs), u.id);
       return send(safe(one('SELECT * FROM users WHERE id=?', u.id)));
+    }
+    if (p === '/api/stop' && method === 'POST') {
+      const c = typeof b.job === 'string' ? jobs.get(u.id + ':' + b.job) : null;
+      if (c) c.abort();
+      return send({stopped: !!c});
+    }
+    if (p === '/api/tour' && method === 'POST') {
+      // Guarda a versão do tutorial já vista, para não abrir de novo em outro dispositivo.
+      const prefs = prefsOf(u); prefs.tour = Math.min(100, Math.max(0, Math.floor(Number(b.version) || 0)));
+      sql('UPDATE users SET prefs=? WHERE id=?', JSON.stringify(prefs), u.id);
+      return send({tour: prefs.tour});
     }
     if (p === '/api/favorites' && method === 'POST') {
       const id = canonicalId(bounded(b.id, 512, 1)), prefs = prefsOf(u);
@@ -334,8 +383,8 @@ http.createServer(async (req, res) => {
         const selected = Number(b.selected);
         if (!Number.isInteger(selected) || !m.versions[selected]) fail('Versão inválida.');
         const v = m.versions[selected];
-        list[index] = {...m, content: v.content, model: v.model, route: v.route, status: v.status, created: v.created, reasoning: v.reasoning, sources: v.sources, truncated: v.truncated, effort: v.effort, web: v.web, selected};
-        for (const k of ['status', 'reasoning', 'sources', 'truncated', 'effort', 'web']) if (!v[k]) delete list[index][k];
+        list[index] = {...m, content: v.content, model: v.model, route: v.route, status: v.status, created: v.created, reasoning: v.reasoning, sources: v.sources, truncated: v.truncated, effort: v.effort, web: v.web, images: v.images, selected};
+        for (const k of ['status', 'reasoning', 'sources', 'truncated', 'effort', 'web', 'images']) if (!v[k]) delete list[index][k];
         sql('UPDATE chats SET messages=? WHERE id=?', JSON.stringify(list), id);
         return send(chatRow(one('SELECT * FROM chats WHERE id=?', id)));
       }
@@ -391,6 +440,8 @@ http.createServer(async (req, res) => {
       const providerMessages = [...(system ? [{role: 'system', content: system}] : []), ...context.map((m, i) => forProvider(m, route.vision, i === context.length - 1))];
       const snap = routeSnapshot(route);
       const ctrl = new AbortController(); res.on('close', () => ctrl.abort()); active.add(lock);
+      const jobKey = typeof b.job === 'string' && /^[\w-]{8,64}$/.test(b.job) ? u.id + ':' + b.job : null;
+      if (jobKey) jobs.set(jobKey, ctrl);
       const save = () => {
         if (!chat) return;
         const first = messages.find(m => m.role === 'user');
@@ -401,9 +452,27 @@ http.createServer(async (req, res) => {
         if (target === null) save();
         res.writeHead(200, {'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'}); res.flushHeaders();
         res.write(JSON.stringify({route: {...snap, profile: entry.kind === 'profile' ? entry.id : null}, requestId}) + '\n');
-        let reply = '', failure = '', status = null, reasoning = '', sources = null, truncated = false;
+        let reply = '', failure = '', status = null, reasoning = '', sources = null, truncated = false, pictures = [];
         try {
-          for await (const ev of generate({route, messages: providerMessages, temperature: prefs.temperature ?? 0.7, maxTokens: Math.min(8192, Math.max(prefs.maxTokens || 2048, profile?.minTokens || 0)), effort, web, signal: ctrl.signal})) {
+          if (route.imageOutput) {
+            // Geração de imagem: o pedido mais recente vira o prompt; estilo e proporção vêm dos ajustes.
+            const latest = providerMessages.at(-1), sourceRow = context.at(-1);
+            const hint = imageStyle(sourceRow?.options);
+            if (hint) latest.content = hint + '\n\n' + latest.content;
+            // Pedido de ajuste sem imagem nova: a última imagem gerada vira referência.
+            if (route.vision && !latest.images?.length) {
+              const previous = [...context].reverse().find(m => m.role === 'assistant' && m.images?.length);
+              const ref = previous && mediaData(u.id, previous.images.at(-1));
+              if (ref) latest.images = [ref];
+            }
+            const ratio = String(sourceRow?.options?.ratio || '').split(' ')[0];
+            const out = await generateImage({route, prompt: latest.content, references: latest.images || [], messages: providerMessages, aspect: RATIOS.includes(ratio) ? ratio : '1:1', signal: ctrl.signal});
+            for (const dataUrl of out.images) {
+              const ref = chat ? storeMedia(u.id, chat.id, dataUrl) : dataUrl;
+              if (ref) { pictures.push(ref); res.write(JSON.stringify({image: ref}) + '\n'); }
+            }
+            if (out.text) { reply = out.text; res.write(JSON.stringify({delta: out.text}) + '\n'); }
+          } else for await (const ev of generate({route, messages: providerMessages, temperature: prefs.temperature ?? 0.7, maxTokens: Math.min(8192, Math.max(prefs.maxTokens || 2048, profile?.minTokens || 0)), effort, web, signal: ctrl.signal})) {
             if (ev.type === 'text') { reply += ev.value; res.write(JSON.stringify({delta: ev.value}) + '\n'); }
             else if (ev.type === 'reasoning') { if (reasoning.length < 60000) reasoning += ev.value; res.write(JSON.stringify({reasoning: ev.value}) + '\n'); }
             else if (ev.type === 'sources') { sources = ev.value; res.write(JSON.stringify({sources}) + '\n'); }
@@ -417,24 +486,24 @@ http.createServer(async (req, res) => {
           if (!ctrl.signal.aborted) res.write(JSON.stringify({error: failure, status, alternatives: catalog.models.filter(m => m.available && m.id !== modelId && m.route?.id !== route.id && m.id !== route.id).slice(0, 3).map(m => ({id: m.id, name: m.name}))}) + '\n');
         } finally {
           const now = Date.now();
-          const extra = {...(reasoning ? {reasoning} : {}), ...(sources ? {sources} : {}), ...(truncated ? {truncated} : {}), ...(effort ? {effort} : {}), ...(web ? {web} : {}), ...(failure ? {status: failure} : {})};
+          const extra = {...(pictures.length ? {images: pictures} : {}), ...(reasoning ? {reasoning} : {}), ...(sources ? {sources} : {}), ...(truncated ? {truncated} : {}), ...(effort ? {effort} : {}), ...(web ? {web} : {}), ...(failure ? {status: failure} : {})};
           if (target !== null) {
-            if (reply) {
+            if (reply || pictures.length) {
               const old = messages[target];
-              const keep = m => Object.fromEntries(['status', 'reasoning', 'sources', 'truncated', 'effort', 'web'].filter(k => m[k]).map(k => [k, m[k]]));
+              const keep = m => Object.fromEntries(['status', 'reasoning', 'sources', 'truncated', 'effort', 'web', 'images'].filter(k => m[k]).map(k => [k, m[k]]));
               const versions = old.versions ? [...old.versions] : [{content: old.content, model: old.model, route: old.route, created: old.created, ...keep(old)}];
               versions.push({content: reply, model: modelId, route: snap, created: now, ...extra});
               messages[target] = {role: 'assistant', content: reply, model: modelId, route: snap, created: now, versions, selected: versions.length - 1, ...extra};
               save();
             }
           } else {
-            if (reply) messages.push({role: 'assistant', content: reply, model: modelId, route: snap, created: now, ...extra});
+            if (reply || pictures.length) messages.push({role: 'assistant', content: reply, model: modelId, route: snap, created: now, ...extra});
             else if (failure) messages.at(-1).status = failure;
             save();
           }
         }
         res.end(JSON.stringify({done: true}) + '\n');
-      } finally { active.delete(lock); }
+      } finally { active.delete(lock); if (jobKey) jobs.delete(jobKey); }
       return;
     }
     fail('Rota não encontrada.', 404);

@@ -86,3 +86,20 @@ test('desativar no ambiente remove o modelo das duas telas; rota ausente aparece
   assert.match(empty.models.find(m => m.id === 'openrouter/openai/gpt-6-astra').reason, /OPENROUTER_API_KEY/);
   assert.equal(empty.limits.openrouter, null);
 });
+
+test('modelos de imagem: perfil próprio, sem chamada mínima e fora dos perfis de texto', () => {
+  const banana = route('openrouter/google/gemini-nano-banana-2.1', {vendor: 'Google', vision: true, imageOutput: true, textOutput: true, context: 131072});
+  const gpt = route('openrouter/openai/gpt-image-2', {vendor: 'OpenAI', vision: true, imageOutput: true, textOutput: false, context: 4000000});
+  const sonnet = route('openrouter/anthropic/claude-sonnet-5.5', {vision: true, context: 1000000});
+  const d = discovery([banana, gpt, sonnet]);
+  const cat = buildCatalog({discovery: d, checks: ok(sonnet.id), user: {email: 'a@b.c'}, env: env()});
+  assert.equal(cat.models.find(m => m.id === banana.id).available, true, 'modelo de imagem listado fica disponível sem chamada mínima');
+  assert.deepEqual(pendingChecks(d, ok(sonnet.id), env()).map(r => r.id), []);
+  const image = cat.models.find(m => m.id === 'jack/image');
+  assert.equal(image.route.id, banana.id); assert.equal(image.output, 'image'); assert.equal(image.capabilities.image, true); assert.equal(image.capabilities.text, false);
+  assert.equal(cat.models.find(m => m.id === 'jack/pro').route.id, sonnet.id, 'largest:* nunca escolhe um modelo de imagem');
+  assert.ok(cat.models.filter(m => m.kind === 'profile' && m.output !== 'image').every(p => !p.routes.some(r => [banana.id, gpt.id].includes(r))));
+  const guest = buildCatalog({discovery: d, checks: ok(sonnet.id), env: env()});
+  assert.match(guest.models.find(m => m.id === 'jack/image').reason, /Entre na sua conta/);
+  assert.equal(cat.models.find(m => m.id === gpt.id).capabilities.text, false);
+});

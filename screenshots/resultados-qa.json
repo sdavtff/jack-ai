@@ -60,7 +60,17 @@
   "detail": "Jack AI Code\nvia Claude Sonnet 5.5"
  },
  {
-  "name": "código com destaque e botão de copiar",
+  "name": "código vira arquivo na conversa: cartão main.py com Ver e Baixar",
+  "ok": true,
+  "detail": "main.py | python · 7 linhas · 198 B | Ver | Baixar"
+ },
+ {
+  "name": "visualizador abre o arquivo com destaque de sintaxe, Copiar e Baixar",
+  "ok": true,
+  "detail": "python · 7 linhas"
+ },
+ {
+  "name": "Esc fecha o visualizador e devolve o foco ao arquivo",
   "ok": true,
   "detail": ""
  },
@@ -82,7 +92,7 @@
  {
   "name": "conversa longa rola e a última resposta fica visível acima do campo",
   "ok": true,
-  "detail": "{'sh': 3419, 'ch': 575, 'lastBottom': 595.453125, 'dockTop': 631.25}"
+  "detail": "{'sh': 3181, 'ch': 575, 'lastBottom': 595.390625, 'dockTop': 631.25}"
  },
  {
   "name": "gerar nova versão mantém as anteriores acessíveis",
@@ -242,7 +252,7 @@
  {
   "name": "Biblioteca filtra por capacidade (análise de imagens)",
   "ok": true,
-  "detail": "23"
+  "detail": "29"
  },
  {
   "name": "Biblioteca: seção Jack AI primeiro e fornecedores separados",
@@ -325,9 +335,39 @@
   "detail": ""
  },
  {
-  "name": "código vira arquivos com nome (comando de terminal fica de fora)",
+  "name": "código vira arquivos na conversa (comando de terminal fica como bloco)",
   "ok": true,
-  "detail": "{'arquivos': ['main.lua', 'utils/texto.lua'], 'blocos': ['main.lua', 'utils/texto.lua']}"
+  "detail": "{'arquivos': ['main.lua', 'utils/texto.lua'], 'blocos': 1}"
+ },
+ {
+  "name": "2 ou mais arquivos chegam num único anexo .zip",
+  "ok": true,
+  "detail": "explique-recursao-com-um-exemplo.zip | 2 arquivos · 202 B · main.lua, texto.lua | Ver arquivos | Baixar .zip"
+ },
+ {
+  "name": "“Ver arquivos” abre o visualizador com uma aba por arquivo",
+  "ok": true,
+  "detail": "['main.lua', 'texto.lua']"
+ },
+ {
+  "name": "seta para a direita passa ao próximo arquivo",
+  "ok": true,
+  "detail": "utils/texto.lua"
+ },
+ {
+  "name": "acessibilidade (axe) sem violações graves: visualizador de código 1440 px",
+  "ok": true,
+  "detail": "0 aviso(s) menores: "
+ },
+ {
+  "name": "o visualizador baixa o arquivo aberto",
+  "ok": true,
+  "detail": "texto.lua"
+ },
+ {
+  "name": "fechar o visualizador devolve o foco a “Ver arquivos”",
+  "ok": true,
+  "detail": ""
  },
  {
   "name": "“Baixar .zip” entrega um .zip válido com os arquivos",
@@ -335,12 +375,97 @@
   "detail": "{'zip': 'explique-recursao-com-um-exemplo.zip', 'conteudo': ['main.lua', 'utils/texto.lua']}"
  },
  {
-  "name": "cada arquivo também pode ser baixado sozinho",
+  "name": "um arquivo só chega como arquivo (sem .zip)",
   "ok": true,
-  "detail": "texto.lua"
+  "detail": "contador.lua | lua · 40 linhas · 710 B | Ver | Baixar"
  },
  {
-  "name": "arquivo longo aparece recolhido e abre com “Mostrar tudo”",
+  "name": "“Baixar” entrega o arquivo único",
+  "ok": true,
+  "detail": "contador.lua"
+ },
+ {
+  "name": "figurinha em SVG aparece como imagem no próprio chat (sem anexo)",
+  "ok": true,
+  "detail": "Jack AI Code via Claude Sonnet 5.5  Aqui está a figurinha:  adesivo.svg Copiar r"
+ },
+ {
+  "name": "visualizador da figurinha: Ver código, PNG, Figurinha e SVG",
+  "ok": true,
+  "detail": "['Ver código', 'PNG', 'Figurinha', 'SVG']"
+ },
+ {
+  "name": "“Figurinha” baixa WebP 512 × 512 até 100 KB com o fundo liso removido",
+  "ok": true,
+  "detail": "{'arquivo': 'adesivo-figurinha.webp', 'formato': 'WEBP', 'tamanho': (512, 512), 'bytes': 8286, 'canto': (0, 0, 0, 0), 'centro': (118, 83, 245, 255)}"
+ },
+ {
+  "name": "“Ver código” mostra o SVG no visualizador",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "Jack AI Imagem: campo próprio com Estilo e Proporção, sem esforço nem web",
+  "ok": true,
+  "detail": "Descreva a imagem ou a figurinha…"
+ },
+ {
+  "name": "imagem criada aparece no próprio chat, servida pelo site",
+  "ok": true,
+  "detail": "/api/media/9b364d25-1796-402a-9946-e0572cee6171"
+ },
+ {
+  "name": "estilo e proporção chegam ao modelo de imagem",
+  "ok": true,
+  "detail": "{'model': 'google/gemini-nano-banana-2.1', 'prompt': 'Estilo figurinha (adesivo): um único personagem ou objeto centralizado, contorno branco grosso em volta, cores vivas, sem texto, fundo branco totalmente liso e uniforme.\\n\\nEstilo: Figurinha (fundo liso para recortar)\\nProporção: 1:1 quadrada\\n\\nUm gato astronauta feliz', 'aspect_ratio': '1:1', 'n': 1, 'references': 0}"
+ },
+ {
+  "name": "visualizador da imagem: Tamanho real, Figurinha e Baixar",
+  "ok": true,
+  "detail": "{'acoes': ['Tamanho real', 'Figurinha', 'Baixar'], 'meta': 'Imagem criada por Nano Banana 2.1'}"
+ },
+ {
+  "name": "“Tamanho real” amplia a imagem",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "acessibilidade (axe) sem violações graves: visualizador de imagem 1440 px",
+  "ok": true,
+  "detail": "0 aviso(s) menores: "
+ },
+ {
+  "name": "imagem criada vira figurinha WebP 512 × 512 com fundo transparente",
+  "ok": true,
+  "detail": "{'bytes': 5302, 'canto': (0, 0, 0, 0), 'centro': (118, 83, 245, 255)}"
+ },
+ {
+  "name": "“Baixar” entrega a imagem original em PNG",
+  "ok": true,
+  "detail": "imagem-2-1.png"
+ },
+ {
+  "name": "fechar devolve o foco à miniatura",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "foto enviada vira referência para a nova imagem",
+  "ok": true,
+  "detail": "Jack AI Imagem via Nano Banana 2.1 Copiar resposta Ouvir Gerar nova versão"
+ },
+ {
+  "name": "imagem anexada também abre no visualizador",
+  "ok": true,
+  "detail": "Imagem enviada por você"
+ },
+ {
+  "name": "pedir ajuste usa a última imagem como referência",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "voltar a um modelo de texto devolve esforço e web",
   "ok": true,
   "detail": ""
  },
@@ -393,6 +518,71 @@
   "name": "login com Google conclui e volta ao Jack AI com a conta",
   "ok": true,
   "detail": "{'conta': 'pessoa.teste@example.com', 'url': 'http://127.0.0.1:31410/#/'}"
+ },
+ {
+  "name": "tutorial guiado abre sozinho depois do login",
+  "ok": true,
+  "detail": "Boas-vindas ao Jack AI, Pessoa!"
+ },
+ {
+  "name": "tutorial: página atrás fica inerte enquanto o cartão está aberto",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "acessibilidade (axe) sem violações graves: tutorial 1440 px",
+  "ok": true,
+  "detail": "0 aviso(s) menores: "
+ },
+ {
+  "name": "tutorial destaca o seletor de modelo sem cobrir o destaque com o cartão",
+  "ok": true,
+  "detail": "{'destaque': {'x': 508.5, 'y': 557.5, 'width': 159.046875, 'height': 50}, 'cartao': {'x': 508.5, 'y': 242.5, 'width': 380, 'height': 303.203125}}"
+ },
+ {
+  "name": "tutorial: setas voltam e avançam",
+  "ok": true,
+  "detail": "Passo 2 de 16"
+ },
+ {
+  "name": "tutorial: atalhos da página ficam desligados",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "tutorial explica arquivos e .zip com ilustração",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "tutorial passa por cada ferramenta",
+  "ok": true,
+  "detail": "['Boas-vindas ao Jack AI, Pessoa!', 'Campo de mensagem', 'Escolha o modelo', 'Nível de esforço', 'Pesquisa na web', 'Anexos', 'Chat temporário', 'Ditado e leitura em voz alta', 'Arquivos e visualizador', 'Imagens e figurinhas', 'Histórico e busca', 'Biblioteca de modelos', 'Estúdio de ferramentas', 'Configurações', 'Sua conta', 'Tudo pronto!']"
+ },
+ {
+  "name": "“Começar a conversar” fecha o tutorial e devolve o foco ao campo",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "tutorial concluído fica salvo na conta",
+  "ok": true,
+  "detail": "{'favorites': ['jack/code'], 'tour': 1}"
+ },
+ {
+  "name": "tutorial não abre de novo depois de concluído",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "Configurações › “Ver tutorial guiado” reabre o tutorial",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "Esc fecha o tutorial e avisa onde rever",
+  "ok": true,
+  "detail": "Tutorial fechado. Para rever, abra Configurações e toque em “Ver tutorial guiado”."
  },
  {
   "name": "sem erros de JavaScript no desktop",
@@ -453,6 +643,46 @@
   "name": "acessibilidade (axe) sem violações graves: conversa 390 px",
   "ok": true,
   "detail": "0 aviso(s) menores: "
+ },
+ {
+  "name": "celular: anexo .zip cabe na tela",
+  "ok": true,
+  "detail": "{'x': 14, 'y': 546.40625, 'width': 362, 'height': 115.09375}"
+ },
+ {
+  "name": "celular: visualizador ocupa a tela e os botões cabem e são tocáveis",
+  "ok": true,
+  "detail": "{'x': 0, 'y': 0, 'width': 390, 'height': 844}"
+ },
+ {
+  "name": "acessibilidade (axe) sem violações graves: visualizador 390 px",
+  "ok": true,
+  "detail": "0 aviso(s) menores: "
+ },
+ {
+  "name": "celular: imagem cabe inteira no visualizador",
+  "ok": true,
+  "detail": "{'x': 16, 'y': 321.625, 'width': 358, 'height': 358}"
+ },
+ {
+  "name": "celular: tutorial abre com o cartão dentro da tela",
+  "ok": true,
+  "detail": "{'x': 12, 'y': 293.3671875, 'width': 366, 'height': 257.265625}"
+ },
+ {
+  "name": "celular: passos da lateral abrem a gaveta e destacam o item",
+  "ok": true,
+  "detail": "{'item': {'x': 12, 'y': 127, 'width': 275, 'height': 40}, 'destaque': {'x': 5.984375, 'y': 121, 'width': 286.8125, 'height': 52}, 'cartao': {'x': 12, 'y': 185, 'width': 366, 'height': 235.796875}}"
+ },
+ {
+  "name": "acessibilidade (axe) sem violações graves: tutorial 390 px",
+  "ok": true,
+  "detail": "0 aviso(s) menores: "
+ },
+ {
+  "name": "celular: pular fecha o tutorial e a gaveta",
+  "ok": true,
+  "detail": ""
  },
  {
   "name": "sem erros de JavaScript no celular",

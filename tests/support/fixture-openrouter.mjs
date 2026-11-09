@@ -6,10 +6,28 @@
 // Nunca é iniciado pelos scripts dev/start e não entra no build.
 import http from 'node:http';
 import {createHash, randomBytes} from 'node:crypto';
+import {deflateSync} from 'node:zlib';
+
+// PNG pequeno gerado na hora: fundo branco liso e um círculo violeta (bom para testar figurinhas).
+function png(w, h) {
+  const crcTable = new Uint32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = buf => { let c = 0xFFFFFFFF; for (const b of buf) c = crcTable[(c ^ b) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+  const raw = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const o = y * (w * 3 + 1) + 1 + x * 3, inside = (x - w / 2) ** 2 + (y - h / 2) ** 2 < (w * 0.32) ** 2;
+    raw[o] = inside ? 118 : 255; raw[o + 1] = inside ? 82 : 255; raw[o + 2] = inside ? 245 : 255;
+  }
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+const picture = 'data:image/png;base64,' + png(256, 256).toString('base64');
 
 const port = Number(process.env.FIXTURE_PORT || 31262);
 const failPing = new Set(String(process.env.FIXTURE_FAIL_PING || '').split(',').filter(Boolean));
 const text = ['text'], vision = ['text', 'image'], files = ['text', 'image', 'file'];
+const imageModel = (id, name, textToo) => ({id, name, context_length: 131072, pricing: {prompt: '0.000002', completion: '0.00003'},
+  architecture: {input_modalities: ['text', 'image'], output_modalities: textToo ? ['image', 'text'] : ['image']}, supported_parameters: ['max_tokens'], top_provider: {max_completion_tokens: 32768}});
 // Preços em dólares por milhão de tokens (entrada, saída); a API informa por token.
 const model = (id, name, context, inputs, input = 0, output = input, reasoning = true) => ({id, name, context_length: context, pricing: {prompt: String(input / 1e6), completion: String(output / 1e6)},
   architecture: {input_modalities: inputs, output_modalities: ['text']}, supported_parameters: ['temperature', 'max_tokens', ...(reasoning ? ['reasoning', 'include_reasoning'] : [])], top_provider: {max_completion_tokens: 65536}});
@@ -36,7 +54,12 @@ const catalog = [
   model('deepseek/deepseek-v4.1-flash', 'DeepSeek: DeepSeek V4.1 Flash', 1048576, vision, 0.15, 0.3),
   model('qwen/qwen3.8-max-0902', 'Qwen: Qwen3.8 Max (0902)', 1000000, vision, 2, 6),
   model('qwen/qwen3.8-flash', 'Qwen: Qwen3.8 Flash', 1000000, vision, 0.15, 0.47),
-  model('moonshotai/kimi-k3', 'MoonshotAI: Kimi K3', 1048576, vision, 2, 11.2)
+  model('moonshotai/kimi-k3', 'MoonshotAI: Kimi K3', 1048576, vision, 2, 11.2),
+  imageModel('openai/gpt-image-2', 'OpenAI: GPT Image 2', false),
+  imageModel('google/gemini-nano-banana-2.1', 'Google: Nano Banana 2.1', true),
+  imageModel('google/gemini-3-pro-image', 'Google: Nano Banana Pro (Gemini 3 Pro Image)', true),
+  imageModel('google/gemini-3.1-flash-image', 'Google: Nano Banana 2 (Gemini 3.1 Flash Image)', true),
+  imageModel('google/gemini-3.1-flash-lite-image', 'Google: Nano Banana 2 Lite (Gemini 3.1 Flash Lite Image)', true)
 ];
 const failedOnce = new Set();
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -49,6 +72,7 @@ function answerFor(payload) {
   if (/\[arquivos\]/i.test(content)) return ['Pronto! O projeto tem dois arquivos em Lua.\n\n**main.lua**\n```lua\nlocal texto = require(\"utils.texto\")\nprint(texto.contar(\"O gato viu o rato\"))\n```\n\n',
     '```lua utils/texto.lua\nlocal M = {}\n\nfunction M.contar(frase)\n  local n = 0\n  for _ in frase:gmatch(\"%S+\") do n = n + 1 end\n  return n\nend\n\nreturn M\n```\n\n',
     'Para rodar:\n\n```bash\nlua main.lua\n```'];
+  if (/\[svg\]/i.test(content)) return ['Aqui está a figurinha:\n\n```svg adesivo.svg\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect width="200" height="200" fill="#ffffff"/><circle cx="100" cy="100" r="70" fill="#7652f5"/><circle cx="78" cy="88" r="9" fill="#fff"/><circle cx="122" cy="88" r="9" fill="#fff"/><path d="M70 122q30 26 60 0" stroke="#fff" stroke-width="8" fill="none" stroke-linecap="round"/></svg>\n```'];
   if (/\[arquivo-longo\]/i.test(content)) return ['Segue o script.\n\n```lua contador.lua\n' + Array.from({length: 40}, (_, i) => 'print(\"linha ' + (i + 1) + '\")').join('\n') + '\n```'];
   if (/python/i.test(content) && /\[codigo\]|pares|corrig/i.test(content)) return ['Aqui está uma implementação simples. Ela percorre a lista uma vez e soma apenas os números pares.\n\n',
     '```python\ndef soma_pares(numeros: list[int]) -> int:\n    """Soma apenas os números pares da lista."""\n    total = 0\n    for n in numeros:\n        if n % 2 == 0:  # par\n            total += n\n    return total\n```\n\n',
@@ -71,6 +95,9 @@ const codes = new Map();
 const b64 = value => Buffer.from(JSON.stringify(value)).toString('base64url');
 const form = req => new Promise(resolve => { let s = ''; req.on('data', c => s += c); req.on('end', () => resolve(Object.fromEntries(new URLSearchParams(s)))); });
 
+const imageCalls = [];
+// Modelo de imagem que só funciona pelo chat (modalities): exercita a alternativa do adaptador.
+const imageOnlyChat = new Set(['google/gemini-3-pro-image']);
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1');
   // Tela de consentimento do Google: aprova na hora e devolve code e state ao redirect_uri.
@@ -95,8 +122,32 @@ http.createServer(async (req, res) => {
   }
   if (url.pathname === '/api/v1/key') return res.end(JSON.stringify({data: {label: 'teste', is_free_tier: false, limit: 25, limit_remaining: 18.4, usage: 6.6}}));
   if (url.pathname === '/api/v1/models/user') return res.end(JSON.stringify({data: catalog}));
+  // Image API do OpenRouter: POST /images devolve b64_json. Os pedidos ficam em /__images para os testes.
+  if (url.pathname === '/__images') return res.end(JSON.stringify(imageCalls));
+  if (url.pathname === '/api/v1/images' && req.method === 'POST') {
+    const payload = await body(req);
+    res.setHeader('Content-Type', 'application/json');
+    if (!imageOnlyChat.has(payload.model) && catalog.some(m => m.id === payload.model && m.architecture?.output_modalities?.includes('image'))) {
+      imageCalls.push({model: payload.model, prompt: payload.prompt, aspect_ratio: payload.aspect_ratio, n: payload.n, references: (payload.input_references || []).length});
+      if (/\[semimagem\]/i.test(payload.prompt)) return res.end(JSON.stringify({created: Date.now(), data: []}));
+      await wait(/\[lento\]/i.test(payload.prompt) ? 1500 : 120);
+      return res.end(JSON.stringify({created: Math.floor(Date.now() / 1000), data: [{b64_json: picture.split(',')[1], media_type: 'image/png'}], usage: {cost: 0.04}}));
+    }
+    res.writeHead(404); return res.end('{"error":{"message":"Model not available on the Image API"}}');
+  }
   if (url.pathname !== '/api/v1/chat/completions' || req.method !== 'POST') { res.writeHead(404); return res.end(); }
   const payload = await body(req);
+  // Geração de imagem (modalities): resposta inteira, com a imagem em message.images.
+  if (payload.modalities?.includes('image')) {
+    const lastUser = payload.messages.filter(m => m.role === 'user').at(-1);
+    const parts = Array.isArray(lastUser.content) ? lastUser.content : [{type: 'text', text: lastUser.content}];
+    const prompt = parts.filter(p => p.type === 'text').map(p => p.text).join(' '), refs = parts.filter(p => p.type === 'image_url').length;
+    res.setHeader('Content-Type', 'application/json');
+    if (/\[semimagem\]/i.test(prompt)) return res.end(JSON.stringify({choices: [{message: {role: 'assistant', content: 'Não consegui criar essa imagem.'}}]}));
+    await wait(/\[lento\]/i.test(prompt) ? 1500 : 120);
+    const note = 'Imagem criada por `' + payload.model + '` em ' + (payload.image_config?.aspect_ratio || 'padrão') + (refs ? ', com ' + refs + ' imagem de referência' : '') + (/figurinha/i.test(prompt) ? ', estilo figurinha' : '') + '.';
+    return res.end(JSON.stringify({choices: [{message: {role: 'assistant', content: payload.modalities.includes('text') ? note : null, images: [{type: 'image_url', image_url: {url: picture}}]}}]}));
+  }
   if (!payload.stream) {
     if (failPing.has(payload.model)) { res.writeHead(404, {'Content-Type': 'application/json'}); return res.end('{"error":{"message":"not found"}}'); }
     return res.end(JSON.stringify({choices: [{message: {role: 'assistant', content: 'ok'}}]}));

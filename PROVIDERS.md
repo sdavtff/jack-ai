@@ -48,6 +48,16 @@ A lista leva em conta as preferências e restrições da conta. Capacidade do pr
 - **PDF** (até 2 MB, um por mensagem): vai como parte `file` da mensagem. Modelos com leitura nativa de arquivos recebem o PDF direto. Para os outros, o servidor pede o conversor gratuito do OpenRouter (`file-parser` com `cloudflare-ai`). O PDF fica salvo na conversa e é reenviado nas mensagens seguintes, como o restante do histórico.
 - **Resposta cortada**: quando o provedor encerra com `finish_reason: length`, a resposta mostra “Continuar resposta”.
 
+## Imagens e figurinhas (Jack AI Imagem)
+
+- **Perfil** `jack/image` (exige conta; `JACK_IMAGE_ACCESS=guest` libera visitantes). Ordem das rotas: Nano Banana 2.1 (`google/gemini-nano-banana-2.1`), GPT Image 2 (`openai/gpt-image-2`), Nano Banana Pro (`google/gemini-3-pro-image`), Nano Banana 2 (`google/gemini-3.1-flash-image`) e Nano Banana 2 Lite (`google/gemini-3.1-flash-lite-image`). Modelos de imagem nunca entram nos perfis de texto nem na escolha automática do Pro.
+- **Chamada**: Image API do OpenRouter, `POST /api/v1/images` com `prompt`, `n: 1`, `aspect_ratio` e, para editar, `input_references` (a foto enviada ou a última imagem da conversa). A imagem volta em `data[].b64_json`. Se a rota responder 404/405 nessa API, o servidor usa o chat com `modalities` e lê `message.images`.
+- **Controles**: Estilo (figurinha com fundo liso, ilustração, foto realista, ícone, logotipo, pixel art) vira uma instrução no começo do pedido; Proporção vai em `aspect_ratio` (1:1, 16:9, 9:16, 4:3, 3:4).
+- **Sem chamada mínima**: rotas de imagem não passam pelo teste de 16 tokens (uma imagem custa bem mais que isso). Basta aparecer na listagem da chave. Se uma rota falhar, o erro aparece na conversa.
+- **Armazenamento**: cada imagem fica na tabela `media` (migração `004.sql`) e é servida em `/api/media/<id>` só para a dona da conversa. O JSON da conversa guarda apenas o endereço. Excluir a conversa apaga as imagens. No chat temporário a imagem fica só na aba.
+- **Figurinha**: o visualizador converte qualquer imagem em WebP 512 × 512 (até 100 KB, com margem) e remove o fundo quando ele é liso e ocupa os cantos. Tudo acontece no navegador.
+- **Custo**: a saída de imagem é cobrada à parte pelo OpenRouter, por imagem gerada. Defina um limite de gastos na chave.
+
 ## Integrações removidas
 
 - **Ollama (modelos locais)**: saiu nesta versão, porque os modelos locais são gratuitos e fora do recorte de 2026. `OLLAMA_BASE_URL` e `JACK_DISABLE_OLLAMA` não têm mais efeito e podem ser apagadas do `.env`.

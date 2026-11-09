@@ -1,6 +1,16 @@
 import { Marked } from './vendor/marked/marked.js';
 import { mathElement } from './math.js';
 import { extractFiles } from './files.js';
+import { icon } from './icons.js';
+
+// SVG (texto) → data URL. Em <img>, o SVG não executa scripts.
+export function svgSource(code) {
+  const bytes = new TextEncoder().encode(code);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return 'data:image/svg+xml;base64,' + btoa(bin);
+}
+export const isSvg = f => (/\.svg$/i.test(f.path || '') || f.lang === 'svg') && !f.incomplete && /<svg[\s>]/i.test(f.code || '');
 
 // Baixa um texto como arquivo (blocos de código e .zip das respostas).
 export function saveFile(name, data, type = 'text/plain;charset=utf-8') {
@@ -11,7 +21,7 @@ export function saveFile(name, data, type = 'text/plain;charset=utf-8') {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 // Blocos da mensagem em renderização, na ordem do texto (nomes de arquivo e linguagem).
-let blocks = [], blockAt = 0;
+let blocks = [], blockAt = 0, asFiles = false;
 
 const md = new Marked();
 const delimiters = /\$|\\[([]/;
@@ -29,12 +39,31 @@ const node = (tag, ...children) => {
   return element;
 };
 
+// Arquivo dentro da resposta: SVG vira imagem; o resto vira um cartão que abre o visualizador.
+function fileItem(text, meta) {
+  const file = {path: meta.path, lang: meta.lang, code: text, incomplete: meta.incomplete, lines: meta.lines};
+  if (isSvg(file)) {
+    const figure = node("figure"), open = node("button"), img = node("img");
+    figure.className = "svgfig"; open.type = "button"; open.className = "thumb"; open.dataset.viewPath = file.path; open._file = file;
+    open.setAttribute("aria-label", "Abrir a imagem " + file.path + " no visualizador");
+    img.src = svgSource(text); img.alt = "Imagem gerada: " + file.path; img.decoding = "async";
+    open.append(img); figure.append(open, node("figcaption", file.path));
+    return figure;
+  }
+  const chip = node("button");
+  chip.type = "button"; chip.className = "filechip"; chip.dataset.viewPath = file.path; chip._file = file;
+  chip.title = "Abrir " + file.path + " no visualizador";
+  chip.innerHTML = icon("file") + '<span class="fname"></span><small></small><span class="fopen">' + icon("eye") + "Ver</span>";
+  chip.querySelector(".fname").textContent = file.path;
+  chip.querySelector("small").textContent = [file.lang, file.lines + (file.lines === 1 ? " linha" : " linhas"), file.incomplete ? "escrevendo…" : ""].filter(Boolean).join(" · ");
+  return chip;
+}
+
 const keyWords = /^(?:as|async|await|break|case|catch|class|const|continue|def|do|else|elif|except|export|extends|false|False|finally|for|from|function|if|import|in|interface|let|match|new|None|null|of|pass|print|private|public|raise|return|static|struct|switch|throw|true|True|try|type|var|while|with|yield|SELECT|FROM|WHERE|JOIN|ORDER|BY|LIMIT|INSERT|INTO|UPDATE|DELETE)$/;
 const lexeme = /\/\/[^\n]*|\/\*[\s\S]*?\*\/|#[^\n]*|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`|\b\d+(?:\.\d+)?\b|[A-Za-z_$][\w$]*/g;
 
-function codeBlock(text, info) {
-  const meta = blocks[blockAt++] || {};
-  const language = (meta.lang || String(info || '').split(/\s/)[0]).slice(0, 40);
+// Só o código com destaque de sintaxe (usado também pelo visualizador).
+export function highlightCode(text) {
   const code = node("code");
   let last = 0;
   for (const match of text.matchAll(lexeme)) {
@@ -52,6 +81,14 @@ function codeBlock(text, info) {
     last = match.index + s.length;
   }
   code.append(text.slice(last));
+  return code;
+}
+
+function codeBlock(text, info) {
+  const meta = blocks[blockAt++] || {};
+  if (asFiles && meta.path && !meta.skip && text.trim()) return fileItem(text, meta);
+  const language = (meta.lang || String(info || '').split(/\s/)[0]).slice(0, 40);
+  const code = highlightCode(text);
   const copy = node("button","Copiar");
   copy.type = "button";
   copy.setAttribute("aria-label","Copiar código");
@@ -144,9 +181,10 @@ function renderTokens(tokens) {
   return fragment;
 }
 
-export function renderMessage(element, text) {
+// files: blocos de arquivo viram cartões e imagens (respostas do chat).
+export function renderMessage(element, text, {files = false} = {}) {
   element.classList.add("rendered-message");
-  blocks = extractFiles(text); blockAt = 0;
+  blocks = extractFiles(text); blockAt = 0; asFiles = files;
   try { element.replaceChildren(renderTokens(md.lexer(String(text)))); }
   catch { element.textContent = String(text); }
 }

@@ -12,13 +12,22 @@
 4. Reinicie a aplicação. Na primeira inicialização de quem vem de uma versão anterior ao redesign, o servidor aplica `migrations/002.sql` (tabela `route_checks`) e adiciona a coluna `archived` à tabela de conversas. Nesta revisão, ele também adiciona a coluna `google_sub` à tabela de usuários e aplica `migrations/003.sql`. As conversas existentes continuam intactas.
 5. Abra a Biblioteca de modelos. As rotas novas do catálogo aparecem como “Verificando rota” até a chamada mínima automática terminar, uma por vez, a cada poucos segundos. Cada chamada mínima é cobrada (até 16 tokens de saída).
 
-## O que muda nesta revisão (catálogo pago de 2026)
+## O que muda nesta revisão (imagens, visualizador e tutorial)
+
+- **Jack AI Imagem** (`jack/image`): cria e edita imagens e figurinhas com Nano Banana 2.1, GPT Image 2, Nano Banana Pro, Nano Banana 2 e Nano Banana 2 Lite, nessa ordem. Exige conta por padrão; para liberar visitantes, use `JACK_IMAGE_ACCESS=guest` no `.env`. Cada imagem é cobrada pelo OpenRouter.
+- **Visualizador**: imagens geradas, fotos anexadas e figurinhas em SVG abrem no próprio site, com Tamanho real, Baixar e **Figurinha** (WebP 512 × 512 com o fundo liso removido). Arquivos de código abrem no mesmo visualizador, com uma aba por arquivo.
+- **Arquivos no chat**: o código deixou de aparecer solto na resposta. Cada arquivo vira um cartão; 1 arquivo chega como arquivo, 2 ou mais chegam num único **.zip**.
+- **Tutorial guiado**: abre sozinho no primeiro acesso de cada conta e passa por todas as ferramentas. Fica marcado na conta (não abre de novo em outro aparelho). Configurações › “Ver tutorial guiado” mostra de novo.
+- **Interromper mais confiável**: o botão agora também avisa o servidor (`POST /api/stop`), que encerra a geração e grava o trecho recebido mesmo quando um proxy segura a conexão aberta. Antes, a conversa podia ficar presa em “Aguarde a resposta em andamento”.
+- **Banco**: na primeira inicialização o servidor aplica `migrations/004.sql` (tabela `media` para as imagens geradas). Conversas existentes continuam intactas.
+
+## O que muda na revisão anterior (catálogo pago de 2026)
 
 - Saíram todas as rotas gratuitas: `openrouter/free`, as variantes `:free` (DeepSeek V4.1 Flash 1017 gratuito, gpt-oss-120b, Nemotron 3 Ultra, Gemma 4 26B, North Mini Code), o DeepSeek V4.1 Flash no endpoint de avaliação da NVIDIA e os modelos locais do Ollama.
 - Entraram, todos pagos e lançados em 2026: Claude Fable 5.1, Claude Haiku 5.5, GPT-6 Astra Pro, Grok 4.7, DeepSeek V4 Pro 0813, Qwen3.8 Max (0902), Qwen3.8 Flash e Kimi K3. Continuam os modelos pagos que já estavam no catálogo.
 - O **Jack AI Free** virou **Jack AI Flash** (`jack/flash`), que usa os modelos pagos de menor custo. Conversas, favoritos e preferências salvos com `jack/free` passam a usar o Flash automaticamente.
 
-## O que muda nesta revisão (arquivos e .zip)
+## O que muda na revisão anterior (arquivos e .zip)
 
 - Código das respostas aparece como arquivo com nome, “Baixar” e “Copiar”, e cada resposta com código ganha **Arquivos gerados → Baixar .zip**.
 - O Jack AI Code sempre usa o tamanho máximo de resposta, e “Continuar resposta” junta as partes no mesmo .zip.
@@ -46,7 +55,8 @@
 
 - `GET /api/models` devolve um objeto `{checked, providers, signedIn, aliases, limits, models}`. A API ainda informa `price` e `limits` para integrações, mas a interface não os exibe. Cada modelo traz `capabilities.reasoning`.
 - `POST /api/generate` aceita `effort` (`low`, `medium`, `high`) e `web: true`, e transmite eventos `reasoning`, `sources` e `truncated`. Arquivos aceitam PDF como `{name, size, data}`.
-- Rotas novas: `GET /api/auth/google/start`, `GET /api/auth/google/callback`, `POST /api/logout-all`, `GET /api/export` e `DELETE /api/chats`.
+- Rotas novas: `GET /api/auth/google/start`, `GET /api/auth/google/callback`, `POST /api/logout-all`, `GET /api/export` e `DELETE /api/chats`. Nesta revisão: `GET /api/media/:id` (imagem gerada, só para a dona), `POST /api/stop` (`{job}`) e `POST /api/tour` (`{version}`).
+- `POST /api/generate` aceita `job` (identificador para interromper) e, no Jack AI Imagem, as opções `style` e `ratio`. O fluxo pode trazer eventos `{image}` com o endereço da imagem; as mensagens guardam `images`. `providers.mjs` exporta `generateImage()`.
 - As mensagens guardam `route`, `requestId`, `files` e `versions`. As mensagens antigas, inclusive as geradas por rotas gratuitas, são lidas normalmente.
 - `providers.mjs` exporta `listModels()` como `{routes, providers, keys}` e só fala com o OpenRouter. `generate()` agora emite eventos `{type, value}` (`text`, `reasoning`, `sources`, `finish`) em vez de texto puro. O script `scripts/check-provider.mjs` mantém a opção `--catalog`.
 

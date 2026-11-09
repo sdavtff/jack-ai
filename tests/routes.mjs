@@ -17,7 +17,7 @@ test('rotas públicas, arquivos estáticos, perfil e proteção de origem',async
     }
     assert.equal(page.status,200);
     assert.match(await page.text(),/Jack AI/);
-    for(const asset of ['app.js','style.css','render.css','render.js','math.js','icons.js','picker.js','library.js','workspace.js','files.js','zip.js','studio/view.js','studio/data.js','studio/text.js','vendor/marked/marked.js','vendor/inter/inter-latin-wght-normal.woff2','logo.svg','orbit.svg','ring.webp','manifest.webmanifest','icon-192.png','icon-512.png']){
+    for(const asset of ['app.js','style.css','render.css','render.js','math.js','icons.js','picker.js','library.js','workspace.js','files.js','zip.js','viewer.js','tour.js','studio/view.js','studio/data.js','studio/text.js','vendor/marked/marked.js','vendor/inter/inter-latin-wght-normal.woff2','logo.svg','orbit.svg','ring.webp','manifest.webmanifest','icon-192.png','icon-512.png']){
       assert.equal((await fetch(base+'/'+asset)).status,200,asset);
     }
     const art=await fetch(base+'/orbit.webp');assert.equal(art.headers.get('Content-Type'),'image/webp');

@@ -12,7 +12,8 @@ export function createPicker({root, anchor, ctx}) {
     const out = [];
     if (m.id === current) out.push('<span class="tagc active">ativo</span>');
     if (m.preview) out.push('<span class="tagc preview">Prévia</span>');
-    if (m.capabilities?.vision) out.push('<span class="tagc" title="Analisa imagens">Imagens</span>');
+    if (m.capabilities?.image) out.push('<span class="tagc" title="Cria imagens e figurinhas">Cria imagens</span>');
+    else if (m.capabilities?.vision) out.push('<span class="tagc" title="Analisa imagens">Imagens</span>');
     if (!m.available) out.push('<span class="tagc">Indisponível</span>');
     return out.join('');
   }
