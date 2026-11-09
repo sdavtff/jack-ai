@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="title">
+  <title id="title">Jack AI</title>
+  <defs>
+    <linearGradient id="r" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox"><stop stop-color="#e2daff"/><stop offset=".45" stop-color="#b498ff"/><stop offset="1" stop-color="#8460ff"/></linearGradient>
+  </defs>
+  <path fill="url(#r)" d="m22 5 22 1-9 9H19z"/>
+  <path fill="#a380ff" d="M33 16h10L28 37l-8 6-9-5 9-8z"/>
+  <path fill="url(#r)" d="m4 24 10 1 7 7-9 7-9-8z"/>
+  <path fill="#7351d7" d="m12 39 9-7 7 5-8 6z"/>
+</svg>

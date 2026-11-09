@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<meta name="theme-color" content="#111216">
+<meta name="description" content="Jack AI: escreva, programe e explore ideias com modelos de IA em português.">
+<title>Jack AI</title>
+<link rel="icon" href="/logo.svg">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="preload" href="/vendor/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/render.css">
+</head>
+<body class="mode-home">
+<a class="skip" href="#prompt">Pular para o campo de mensagem</a>
+<aside id="sidebar" aria-label="Navegação principal">
+  <div class="brand">
+    <img src="/logo.svg" alt="" width="30" height="30">
+    <b>Jack<span> AI</span></b>
+    <button type="button" class="icon right" data-action="collapse" aria-label="Recolher navegação" data-icon="panel"></button>
+  </div>
+  <button type="button" class="new" data-action="new"><i data-icon="plus"></i><span>Nova conversa</span><kbd aria-hidden="true">Ctrl K</kbd></button>
+  <div class="search" role="search">
+    <i data-icon="search"></i>
+    <input id="search" type="search" placeholder="Buscar conversas" aria-label="Buscar conversas por título ou conteúdo" autocomplete="off" spellcheck="false">
+    <kbd aria-hidden="true">Ctrl /</kbd>
+  </div>
+  <nav class="navlist" aria-label="Áreas do workspace">
+    <button type="button" class="nav" data-action="home" data-view="home"><i data-icon="home"></i>Início</button>
+    <button type="button" class="nav" data-action="library" data-view="library"><i data-icon="layers"></i>Biblioteca de modelos</button>
+    <button type="button" class="nav" data-action="studio" data-view="studio"><i data-icon="tools"></i>Estúdio de ferramentas</button>
+  </nav>
+  <div class="historyhead">
+    <h2 id="historylabel">Histórico <small id="count" aria-label="conversas">0</small></h2>
+    <button type="button" id="archivedToggle" class="chip small" aria-pressed="false" data-action="toggleArchived">Arquivadas</button>
+  </div>
+  <div id="history" aria-labelledby="historylabel"></div>
+  <div class="foot">
+    <button type="button" class="nav" data-action="settings"><i data-icon="settings"></i>Configurações</button>
+    <button type="button" class="profile" data-action="account"><span class="avatar" id="avatar">V</span><span><strong id="username">Visitante</strong><small id="accountlabel">Entrar na conta</small></span><i class="right" data-icon="chevron"></i></button>
+  </div>
+</aside>
+<button type="button" id="scrim" aria-label="Fechar navegação" data-action="collapse" tabindex="-1"></button>
+<main id="main">
+  <header class="topbar">
+    <button type="button" class="icon menu" data-action="collapse" aria-label="Abrir navegação" aria-controls="sidebar" aria-expanded="false" data-icon="panel"></button>
+    <p class="pagetitle" id="page">Início</p>
+    <div class="topactions" id="topactions"></div>
+  </header>
+  <div id="connection" class="connection" role="alert" hidden>Não foi possível carregar o workspace. <button type="button" id="reconnect">Tentar novamente</button></div>
+  <div class="scroll" id="scroll">
+    <section id="home" class="view home" aria-labelledby="hometitle">
+      <div class="hero">
+        <div class="hero-art" aria-hidden="true"></div>
+        <div class="hero-copy">
+          <h1 id="hometitle">O que vamos criar<span>?</span></h1>
+          <p>Escreva, programe ou explore uma ideia. O Jack AI ajuda você a começar.</p>
+        </div>
+        <div id="homeSlot" class="slot"></div>
+        <div class="suggestions" id="suggestions" role="group" aria-label="Sugestões para começar"></div>
+      </div>
+      <div class="studio-strip" role="group" aria-label="Estúdio de ferramentas">
+        <span class="strip-label"><i data-icon="tools"></i><span>Estúdio<span class="long"> de ferramentas</span></span></span>
+        <button type="button" data-action="studio" data-tab="medidas">Medidas</button>
+        <button type="button" data-action="studio" data-tab="dados">Dados</button>
+        <button type="button" data-action="studio" data-tab="texto">Texto e código</button>
+      </div>
+    </section>
+    <section id="thread" class="view thread" aria-labelledby="chatTitle" hidden>
+      <div class="threadhead">
+        <h1 id="chatTitle">Conversa</h1>
+        <span id="threadbadge" class="badge" hidden></span>
+      </div>
+      <div id="messages" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Mensagens da conversa"></div>
+    </section>
+    <section id="library" class="view page" aria-labelledby="librarytitle" hidden></section>
+    <section id="studio" class="view page" aria-labelledby="studiotitle" hidden></section>
+  </div>
+  <div id="dockSlot" class="dock slot"><p class="hint">O Jack AI pode cometer erros. Confira informações importantes.</p></div>
+</main>
+
+<form id="composer" class="composer" novalidate>
+  <div id="notice" class="notice" role="status" hidden></div>
+  <div id="profileControls" class="controls" hidden></div>
+  <ul id="attachments" class="attachments" aria-label="Arquivos anexados" hidden></ul>
+  <label for="prompt" class="sr-only">Mensagem para o Jack AI</label>
+  <textarea id="prompt" rows="1" placeholder="Pergunte ao Jack AI…" autocomplete="off" enterkeyhint="send" aria-describedby="composerhint"></textarea>
+  <div class="toolbar">
+    <button type="button" class="icon tool" id="attach" data-action="attach" aria-label="Anexar arquivos" data-icon="clip"></button>
+    <button type="button" class="modelbtn" id="modelbtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="picker">
+      <span class="modeldot" aria-hidden="true"></span><span class="modelname" id="selected">Selecionar modelo</span><i data-icon="down"></i>
+    </button>
+    <button type="button" class="chipbtn" id="effort" aria-haspopup="menu" aria-expanded="false" data-action="effort"><i data-icon="gauge"></i><span id="effortlabel">Esforço</span></button>
+    <button type="button" class="chipbtn" id="web" aria-pressed="false" data-action="web"><i data-icon="globe"></i><span>Web</span></button>
+    <button type="button" class="tempchip" id="tempchip" aria-pressed="false" data-action="temporary" aria-describedby="tempnote"><i data-icon="ghost"></i><span>Temporário</span></button>
+    <button type="button" class="icon tool" id="mic" data-action="dictate" aria-pressed="false" aria-label="Ditar mensagem" data-icon="mic" hidden></button>
+    <button type="submit" class="send" id="send" aria-label="Enviar mensagem" data-icon="up"></button>
+  </div>
+  <p id="tempnote" class="tempnote" hidden></p>
+  <p id="composerhint" class="sr-only">Enter envia. Shift mais Enter quebra a linha.</p>
+</form>
+<div id="picker" class="picker" role="dialog" aria-modal="false" aria-label="Escolher modelo" hidden></div>
+<dialog id="dialog" aria-labelledby="dialogtitle">
+  <div class="dialoghead"><h2 id="dialogtitle"></h2><button type="button" class="icon" data-action="close" aria-label="Fechar" data-icon="x"></button></div>
+  <div id="dialogbody"></div>
+</dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<input id="file" type="file" multiple hidden accept=".txt,.md,.csv,.json,.js,.ts,.py,.html,.css,.pdf,application/pdf,image/png,image/jpeg,image/webp">
+<script type="module" src="/app.js"></script>
+</body>
+</html>

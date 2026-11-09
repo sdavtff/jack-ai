@@ -1,0 +1,442 @@
+[
+ {
+  "name": "acessibilidade (axe) sem violações graves: início 1440 px",
+  "ok": true,
+  "detail": "0 aviso(s) menores: "
+ },
+ {
+  "name": "teclado: Tab chega à sugestão “Escrever código”",
+  "ok": true,
+  "detail": "7 Tabs"
+ },
+ {
+  "name": "sugestão preenche o campo e seleciona o trecho a completar",
+  "ok": true,
+  "detail": "['prompt', '…', 'Ajude-me a implementar esta funcionalidade em …']"
+ },
+ {
+  "name": "Shift+Enter quebra a linha sem enviar",
+  "ok": true,
+  "detail": "'Ajude-me a implementar esta funcionalidade em Python\\nA função deve somar só os números pares de uma lista.'"
+ },
+ {
+  "name": "teclado: Tab chega ao seletor de modelo",
+  "ok": true,
+  "detail": "modelbtn"
+ },
+ {
+  "name": "seletor abre com foco na busca",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "Esc fecha o seletor e devolve o foco ao botão de origem",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "escolha devolve o foco ao campo e preserva o rascunho",
+  "ok": true,
+  "detail": "Jack AI Code"
+ },
+ {
+  "name": "modelo ativo trocado para Jack AI Code",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "Jack AI Code mostra linguagem, comportamento esperado e erro observado",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "após o primeiro envio o campo vai para o rodapé",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "resposta identifica o perfil e a rota real usada",
+  "ok": true,
+  "detail": "Jack AI Code\nvia Claude Sonnet 5.5"
+ },
+ {
+  "name": "código com destaque e botão de copiar",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "mensagem enviada mostra linguagem informada",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "acessibilidade (axe) sem violações graves: conversa 1440 px",
+  "ok": true,
+  "detail": "0 aviso(s) menores: "
+ },
+ {
+  "name": "clique duplo em Enviar gera uma única mensagem e não interrompe",
+  "ok": true,
+  "detail": "1"
+ },
+ {
+  "name": "conversa longa rola e a última resposta fica visível acima do campo",
+  "ok": true,
+  "detail": "{'sh': 3296, 'ch': 575, 'lastBottom': 595.109375, 'dockTop': 631.25}"
+ },
+ {
+  "name": "gerar nova versão mantém as anteriores acessíveis",
+  "ok": true,
+  "detail": "('2 de 2', '1 de 2')"
+ },
+ {
+  "name": "interromper preserva o trecho recebido",
+  "ok": true,
+  "detail": "Jack AI Code via Claude Sonnet 5.5  Trecho 1 da resposta lenta. Trecho 2 da resposta lenta. Trecho 3 da resposta lenta. "
+ },
+ {
+  "name": "trecho interrompido continua salvo após recarregar",
+  "ok": true,
+  "detail": "Jack AI Code via Claude Sonnet 5.5  Trecho 1 da resposta lenta. Trecho 2 da resp"
+ },
+ {
+  "name": "falha mostra aviso com “Tentar novamente”",
+  "ok": true,
+  "detail": "A resposta ficou incompleta. O provedor encerrou a resposta antes do fim. O trecho recebido foi mantido. Tentar novamente Usar Jack AI Flash"
+ },
+ {
+  "name": "nova tentativa responde sem duplicar a mensagem",
+  "ok": true,
+  "detail": "1"
+ },
+ {
+  "name": "envio sem rede mantém o texto no campo e oferece nova tentativa",
+  "ok": true,
+  "detail": "A mensagem não foi enviada. Sem conexão com o servidor. O texto e os anexos continuam no campo para "
+ },
+ {
+  "name": "nova tentativa após falha de rede envia uma vez",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "Nova conversa abre o campo vazio",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "rascunho da conversa A volta ao alternar",
+  "ok": true,
+  "detail": "Rascunho em A"
+ },
+ {
+  "name": "conversa aberta indicada visualmente na lateral",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "rascunho retomado depois de recarregar",
+  "ok": true,
+  "detail": "Rascunho em A"
+ },
+ {
+  "name": "rascunho da nova conversa também é preservado",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "anexos mostram nome, estado e ação de remover",
+  "ok": true,
+  "detail": "foto.png | 144 B · pronto | notas.txt | 45 B · pronto"
+ },
+ {
+  "name": "modelo sem imagens explica qual arquivo exige atenção",
+  "ok": true,
+  "detail": "foto.png precisa de um modelo com análise de imagens. O DeepSeek V4 Pro 0813 não aceita imagens.  Manter Jack AI Code Remover arquivo e usar DeepSeek V4 Pro 0813"
+ },
+ {
+  "name": "“Manter” preserva o modelo atual e o arquivo",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "“Remover arquivo” troca o modelo e mantém o arquivo de texto",
+  "ok": true,
+  "detail": "notas.txt\n45 B · pronto"
+ },
+ {
+  "name": "mensagem enviada mantém o anexo visível",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "Pro sem conta explica o motivo e oferece alternativas",
+  "ok": true,
+  "detail": "Jack AI Pro está indisponível agora. Entre na sua conta para usar o Jack AI Pro. Escolha como continuar:  Entrar na conta Usar Jack AI Flash Usar Jack AI Studio"
+ },
+ {
+  "name": "favorito aparece no topo do seletor",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "menu da conversa abre pelo teclado e Esc devolve o foco",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "renomear atualiza a lista",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "fixar cria a seção Fixadas",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "arquivar move para Arquivadas",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "busca por conteúdo encontra conversas",
+  "ok": true,
+  "detail": "Resultados | Projeto renomeado | arquivada | Resuma as notas…"
+ },
+ {
+  "name": "Medidas converte e inverte origem e destino",
+  "ok": true,
+  "detail": "('5,08 centímetro', '0,787401574803 polegada')"
+ },
+ {
+  "name": "“Usar na conversa” abre prévia editável com destino",
+  "ok": true,
+  "detail": "O rascunho já digitado nesta conversa (23 caracteres) será mantido e o conteúdo entra depois dele. Nada é enviado até você pressionar Enviar."
+ },
+ {
+  "name": "conteúdo entra no rascunho sem apagar o que já estava digitado e sem enviar",
+  "ok": true,
+  "detail": "'Rascunho para o estúdio\\n\\n2 polegada = 5,08 centímetro (editado)'"
+ },
+ {
+  "name": "Dados importa CSV, ordena e leva as linhas escolhidas",
+  "ok": true,
+  "detail": "(['Lápis', 'Caneta', 'Caderno', 'Mochila'], 'Dados de vendas.csv (2 linhas):\\n\\n| produto | região | total |\\n| --- | --- | --- |\\n| Caderno | Sul | 120 |\\n| Mochila | Su')"
+ },
+ {
+  "name": "Texto e código aponta linha e coluna do erro de JSON",
+  "ok": true,
+  "detail": "Erro de sintaxe na linha 3, coluna 14. Vírgula sobrando antes de \"]\".   \"b\": [1, 2,]              ^"
+ },
+ {
+  "name": "Texto e código conta palavras e caracteres",
+  "ok": true,
+  "detail": "5 Palavras 28 Caracteres 18 Sem espaços 4 Linhas"
+ },
+ {
+  "name": "acessibilidade (axe) sem violações graves: Estúdio 1440 px",
+  "ok": true,
+  "detail": "0 aviso(s) menores: "
+ },
+ {
+  "name": "Biblioteca filtra por capacidade (análise de imagens)",
+  "ok": true,
+  "detail": "23"
+ },
+ {
+  "name": "Biblioteca: seção Jack AI primeiro e fornecedores separados",
+  "ok": true,
+  "detail": "['Jack AI', 'OpenAI', 'Anthropic', 'Google', 'xAI', 'Mistral AI', 'DeepSeek', 'Qwen (Alibaba)', 'Moonshot AI']"
+ },
+ {
+  "name": "Biblioteca só com modelos pagos e sem tokens nem custo em US$",
+  "ok": true,
+  "detail": "[]"
+ },
+ {
+  "name": "Biblioteca indica os modelos com esforço ajustável",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "acessibilidade (axe) sem violações graves: Biblioteca 1440 px",
+  "ok": true,
+  "detail": "0 aviso(s) menores: "
+ },
+ {
+  "name": "menu de esforço com Automático, Baixo, Médio e Alto",
+  "ok": true,
+  "detail": "['AutomáticoO modelo decide quanto pensar:true', 'BaixoResponde mais rápido:false', 'MédioEquilíbrio entre rapidez e cuidado:false', 'AltoPensa mais antes de responder:false']"
+ },
+ {
+  "name": "escolher pelo teclado: esforço Alto e foco de volta ao botão",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "Esc fecha o menu de esforço e devolve o foco",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "resposta mostra o raciocínio recolhível e o esforço usado",
+  "ok": true,
+  "detail": "Jack AI Codevia Claude Sonnet 5.5Esforço alto"
+ },
+ {
+  "name": "raciocínio abre com o texto do modelo",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "botão de pesquisa na web fica pressionado",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "pesquisa na web mostra as fontes com links seguros",
+  "ok": true,
+  "detail": "['https://example.com/noticia-de-teste|noopener noreferrer', 'https://example.org/referencia|noopener noreferrer']"
+ },
+ {
+  "name": "resposta cortada oferece “Continuar resposta”",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "“Continuar resposta” pede a continuação sem repetir o texto",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "PDF anexado aparece como pronto",
+  "ok": true,
+  "detail": "contrato.pdf PDF · 69 B · pronto"
+ },
+ {
+  "name": "PDF chega ao modelo",
+  "ok": true,
+  "detail": "/claude-sonnet-5.5. A mensagem tinha 21 caracteres e instruções do perfil. PDF recebido: contrato.pdf (leitura nativa).\n\nCopiar resposta\nOuvir\nGerar nova versão"
+ },
+ {
+  "name": "respostas oferecem “Ouvir”",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "tecla ? abre os atalhos de teclado",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "acessibilidade (axe) sem violações graves: atalhos 1440 px",
+  "ok": true,
+  "detail": "0 aviso(s) menores: "
+ },
+ {
+  "name": "Configurações: tamanho das respostas sem falar em tokens, dados e atalhos",
+  "ok": true,
+  "detail": "Configurações Nome Foto de perfil Aparência Escura Clara Automática Instruções personalizadas Criatividade · aplicada em modelos compatíveis Precisa Equilibrada Criativa Tamanho das respostas Curtas M"
+ },
+ {
+  "name": "acessibilidade (axe) sem violações graves: Configurações 1440 px",
+  "ok": true,
+  "detail": "0 aviso(s) menores: "
+ },
+ {
+  "name": "estado do Chat temporário visível perto do campo",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "após recarregar, a conversa temporária e o rascunho somem",
+  "ok": true,
+  "detail": "A conversa temporária anterior foi descartada ao recarregar a página, como previsto. O chat temporário continua ativo.\n\n"
+ },
+ {
+  "name": "chat temporário continua ativo e avisa o descarte",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "conversa temporária não entrou no histórico do servidor",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "diálogo de entrada oferece “Continuar com Google”",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "login com Google conclui e volta ao Jack AI com a conta",
+  "ok": true,
+  "detail": "{'conta': 'pessoa.teste@example.com', 'url': 'http://127.0.0.1:31410/#/'}"
+ },
+ {
+  "name": "sem erros de JavaScript no desktop",
+  "ok": true,
+  "detail": "[]"
+ },
+ {
+  "name": "celular: campo aparece na primeira tela",
+  "ok": true,
+  "detail": "{'x': 16, 'y': 176.125, 'width': 358, 'height': 104}"
+ },
+ {
+  "name": "celular: lateral recolhida em menu",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "celular: sem rolagem horizontal",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "acessibilidade (axe) sem violações graves: início 390 px",
+  "ok": true,
+  "detail": "0 aviso(s) menores: "
+ },
+ {
+  "name": "celular: Esc fecha o menu e devolve o foco ao botão",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "celular: Enter quebra a linha (envio pelo botão)",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "teclado virtual (emulado): linha em edição e botão de envio visíveis",
+  "ok": true,
+  "detail": "{'send': {'x': 323, 'y': 326.125, 'width': 42, 'height': 42}, 'prompt': {'x': 29, 'y': 185.125, 'width': 336, 'height': 141}}"
+ },
+ {
+  "name": "celular: envio pelo botão funciona",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "celular: faixa do campo cabe na tela com esforço e web",
+  "ok": true,
+  "detail": "{'scroll': 348, 'client': 348, 'send': 371, 'width': 390, 'effort': True, 'web': True}"
+ },
+ {
+  "name": "teclado virtual (emulado) na conversa: envio visível",
+  "ok": true,
+  "detail": "{'x': 329, 'y': 413, 'width': 42, 'height': 42}"
+ },
+ {
+  "name": "acessibilidade (axe) sem violações graves: conversa 390 px",
+  "ok": true,
+  "detail": "0 aviso(s) menores: "
+ },
+ {
+  "name": "sem erros de JavaScript no celular",
+  "ok": true,
+  "detail": "[]"
+ }
+]

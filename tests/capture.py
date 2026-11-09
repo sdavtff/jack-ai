@@ -1,0 +1,375 @@
+# QA ponta a ponta do redesign com Playwright (Python) e Chromium.
+# Como rodar, a partir da raiz do projeto:
+#   FIXTURE_PORT=31262 node tests/support/fixture-openrouter.mjs &
+#   PORT=31410 DATA_DIR=/tmp/jack-qa OPENROUTER_API_KEY=chave-de-teste \
+#     OPENROUTER_BASE_URL=http://127.0.0.1:31262/api/v1 JACK_CHECK_GAP_MS=30 node server.mjs &
+#   python3 tests/capture.py
+# Variáveis opcionais: JACK_QA_BASE, JACK_QA_OUT (pasta das capturas), CHROME_PATH e
+# AXE_PATH (axe.min.js do pacote axe-core, para a auditoria de acessibilidade).
+# As respostas vêm do servidor de contrato em tests/support: não há inferência real.
+import base64, json, os, re, sys, tempfile, time
+from playwright.sync_api import sync_playwright
+
+BASE = os.environ.get('JACK_QA_BASE', 'http://127.0.0.1:31410')
+OUT = os.environ.get('JACK_QA_OUT', 'screenshots')
+CHROME = os.environ.get('CHROME_PATH', '/usr/bin/google-chrome')
+AXE = open(os.environ['AXE_PATH']).read() if os.environ.get('AXE_PATH') else None
+FILES = tempfile.mkdtemp(prefix='jack-qa-')
+open(FILES + '/foto.png', 'wb').write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAEAAAAAwCAIAAAAuKetIAAAAV0lEQVR4Xu3RAQkAIQAEQTXmJzGsYeRTLMJMgjt27u+Ml62Xx/8cqClQU6CmQE2BmgI1BWoK1BSoKVBToKZATYGaAjUFagrUFKgpUFOgpkBNgZoCNQVqF7X9Ag7sXhl9AAAAAElFTkSuQmCC'))
+open(FILES + '/notas.txt', 'w', encoding='utf-8').write('Notas da reunião\nItem 1: revisar orçamento\n')
+open(FILES + '/contrato.pdf', 'wb').write(b'%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n')
+open(FILES + '/vendas.csv', 'w', encoding='utf-8').write('produto;região;total\nCaderno;Sul;120\nCaneta;Norte;45\nMochila;Sudeste;310\nLápis;Nordeste;12,5\n')
+os.makedirs(OUT, exist_ok=True)
+results = []
+
+def check(name, cond, detail=''):
+    results.append({'name': name, 'ok': bool(cond), 'detail': str(detail)})
+    print(('OK   ' if cond else 'FAIL ') + name + ('  — ' + str(detail) if detail else ''), flush=True)
+
+def ready(pg):
+    pg.wait_for_function("document.querySelector('#selected') && !/Carregando/.test(document.querySelector('#selected').textContent)", timeout=10000)
+
+def wait_idle(pg, timeout=15000):
+    pg.wait_for_function("document.querySelector('#send') && document.querySelector('#send').getAttribute('aria-label') === 'Enviar mensagem'", timeout=timeout)
+
+def active_id(pg):
+    return pg.evaluate("document.activeElement && (document.activeElement.id || document.activeElement.className)")
+
+def axe(pg, label):
+    if not AXE:
+        return
+    pg.add_script_tag(content=AXE)
+    res = pg.evaluate("""async () => { const r = await axe.run(document, {resultTypes: ['violations']}); return r.violations.map(v => ({id: v.id, impact: v.impact, n: v.nodes.length, help: v.help, target: v.nodes.slice(0,3).map(n => n.target.join(' '))})); }""")
+    serious = [v for v in res if v['impact'] in ('serious', 'critical')]
+    check('acessibilidade (axe) sem violações graves: ' + label, not serious, json.dumps(serious, ensure_ascii=False)[:600] if serious else (str(len(res)) + ' aviso(s) menores: ' + ', '.join(v['id'] for v in res)))
+
+def location_ok(pg):
+    return pg.evaluate("location.hash === '#/' || location.hash === ''")
+
+def send(pg, text):
+    pg.fill('#prompt', text)
+    pg.press('#prompt', 'Enter')
+    pg.wait_for_timeout(150)
+    wait_idle(pg)
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(executable_path=CHROME, args=['--no-sandbox'])
+    ctx = browser.new_context(viewport={'width': 1440, 'height': 900}, device_scale_factor=1, bypass_csp=True)
+    pg = ctx.new_page()
+    errors = []
+    pg.on('pageerror', lambda e: errors.append(str(e)))
+    pg.on('console', lambda m: errors.append(m.text) if m.type == 'error' and 'ERR_FAILED' not in m.text and 'Failed to load resource' not in m.text else None)
+    pg.goto(BASE); ready(pg)
+    pg.wait_for_timeout(1500)  # rotas do catálogo concluem a chamada mínima
+    pg.evaluate("document.activeElement.blur()")
+    axe(pg, 'início 1440 px')
+
+    # 1. Fluxo completo pelo teclado: sugestão -> editar -> modelo -> enviar
+    pg.keyboard.press('Tab')
+    steps = 0
+    while steps < 40 and pg.evaluate("document.activeElement.dataset.suggestion") != 'code':
+        pg.keyboard.press('Tab'); steps += 1
+    check('teclado: Tab chega à sugestão “Escrever código”', steps < 40, str(steps + 1) + ' Tabs')
+    pg.keyboard.press('Enter')
+    sel = pg.evaluate("[document.activeElement.id, prompt.value.slice(prompt.selectionStart, prompt.selectionEnd), prompt.value]".replace('prompt', "document.querySelector('#prompt')"))
+    check('sugestão preenche o campo e seleciona o trecho a completar', sel[0] == 'prompt' and sel[1] == '…', sel)
+    pg.keyboard.type('Python')
+    pg.keyboard.press('Shift+Enter'); pg.keyboard.type('A função deve somar só os números pares de uma lista.')
+    val = pg.input_value('#prompt')
+    check('Shift+Enter quebra a linha sem enviar', '\n' in val and pg.locator('.message').count() == 0, repr(val))
+    pg.keyboard.press('Tab'); pg.keyboard.press('Tab')
+    check('teclado: Tab chega ao seletor de modelo', active_id(pg) == 'modelbtn', active_id(pg))
+    pg.keyboard.press('Enter'); pg.wait_for_timeout(200)
+    check('seletor abre com foco na busca', active_id(pg) == 'pickerSearch')
+    pg.keyboard.press('Escape'); pg.wait_for_timeout(100)
+    check('Esc fecha o seletor e devolve o foco ao botão de origem', pg.locator('#picker').is_hidden() and active_id(pg) == 'modelbtn')
+    pg.keyboard.press('Enter'); pg.wait_for_timeout(150)
+    pg.keyboard.type('code'); pg.wait_for_timeout(150)
+    pg.keyboard.press('ArrowDown'); pg.keyboard.press('Enter'); pg.wait_for_timeout(150)
+    check('escolha devolve o foco ao campo e preserva o rascunho', active_id(pg) == 'prompt' and 'em Python' in pg.input_value('#prompt'), pg.inner_text('#selected'))
+    check('modelo ativo trocado para Jack AI Code', pg.inner_text('#selected') == 'Jack AI Code')
+    check('Jack AI Code mostra linguagem, comportamento esperado e erro observado', pg.locator('#profileControls input').count() == 3)
+    pg.fill('[data-opt=language]', 'Python')
+    pg.focus('#prompt'); pg.keyboard.press('End'); pg.keyboard.press('Enter')
+    pg.wait_for_timeout(200)
+    check('após o primeiro envio o campo vai para o rodapé', pg.evaluate("document.querySelector('#dockSlot').contains(document.querySelector('#composer'))"))
+    wait_idle(pg)
+    head = pg.inner_text('.message.assistant .msghead')
+    check('resposta identifica o perfil e a rota real usada', 'Jack AI Code' in head and 'Claude Sonnet 5.5' in head, head)
+    check('código com destaque e botão de copiar', pg.locator('.message-code .hl-keyword').count() > 0 and pg.locator('.message-code button[aria-label="Copiar código"]').count() == 1)
+    check('mensagem enviada mostra linguagem informada', 'Python' in pg.inner_text('.message.user .msgopts'))
+    pg.wait_for_timeout(300)
+    pg.evaluate("document.activeElement.blur(); document.querySelector('#scroll').scrollTop = 0"); pg.wait_for_timeout(200)
+    pg.screenshot(path=OUT + '/conversa-desktop-1440.png')
+    axe(pg, 'conversa 1440 px')
+    chat_a = pg.evaluate("location.hash")
+
+    # 2. Clique duplo não duplica
+    pg.fill('#prompt', 'Pergunta para clique duplo')
+    pg.dblclick('#send'); pg.wait_for_timeout(200); wait_idle(pg)
+    n = pg.evaluate("[...document.querySelectorAll('.message.user .msgtext')].filter(e => e.textContent === 'Pergunta para clique duplo').length")
+    check('clique duplo em Enviar gera uma única mensagem e não interrompe', n == 1 and 'interrompida' not in pg.inner_text('#messages').lower(), n)
+
+    # 3. Conversa longa
+    for k in range(3): send(pg, 'Mensagem longa ' + str(k + 1) + ' [longa]')
+    metrics = pg.evaluate("(() => { const s = document.querySelector('#scroll'); const last = [...document.querySelectorAll('.message')].at(-1).getBoundingClientRect(); const dock = document.querySelector('#dockSlot').getBoundingClientRect(); return {sh: s.scrollHeight, ch: s.clientHeight, lastBottom: last.bottom, dockTop: dock.top}; })()")
+    check('conversa longa rola e a última resposta fica visível acima do campo', metrics['sh'] > metrics['ch'] * 2 and metrics['lastBottom'] <= metrics['dockTop'] + 2, metrics)
+
+    # 4. Versões
+    pg.click('.message.assistant:last-of-type [data-regenerate]'); pg.wait_for_timeout(150); wait_idle(pg)
+    pg.wait_for_selector('.versions')
+    v1 = pg.inner_text('.versions span')
+    pg.click('.versions [aria-label="Versão anterior"]'); pg.wait_for_timeout(400)
+    v2 = pg.inner_text('.versions span')
+    check('gerar nova versão mantém as anteriores acessíveis', v1 == '2 de 2' and v2 == '1 de 2', (v1, v2))
+
+    # 5. Interromper com streaming
+    pg.fill('#prompt', 'Resposta demorada [lento]'); pg.press('#prompt', 'Enter')
+    pg.wait_for_function("document.querySelector('#send').getAttribute('aria-label') === 'Interromper resposta'")
+    pg.wait_for_timeout(1500)
+    pg.click('#send'); wait_idle(pg); pg.wait_for_timeout(600)
+    last = pg.locator('.message.assistant').last.inner_text()
+    check('interromper preserva o trecho recebido', 'Trecho 1' in last and 'interrompida' in last.lower(), last[:120].replace('\n', ' '))
+    pg.reload(); ready(pg); pg.wait_for_timeout(500)
+    last = pg.locator('.message.assistant').last.inner_text()
+    check('trecho interrompido continua salvo após recarregar', 'Trecho 1' in last, last[:80].replace('\n', ' '))
+
+    # 6. Falha com nova tentativa
+    pg.fill('#prompt', 'Teste de falha [falha]'); pg.press('#prompt', 'Enter'); wait_idle(pg)
+    pg.wait_for_selector('.status.error')
+    retry_btn = '.status.error [data-retry], .status.error [data-regenerate]'
+    check('falha mostra aviso com “Tentar novamente”', pg.locator(retry_btn).count() == 1, pg.inner_text('.status.error')[:140].replace('\n', ' '))
+    pg.click(retry_btn); pg.wait_for_timeout(150); wait_idle(pg); pg.wait_for_timeout(300)
+    n = pg.evaluate("[...document.querySelectorAll('.message.user .msgtext')].filter(e => e.textContent === 'Teste de falha [falha]').length")
+    check('nova tentativa responde sem duplicar a mensagem', n == 1 and pg.locator('.status.error').count() == 0 and pg.locator('.message.user').count() == pg.locator('.message.assistant').count(), n)
+    # Falha antes do streaming (rede): conteúdo fica no campo
+    pg.route('**/api/generate', lambda route: route.abort())
+    pg.fill('#prompt', 'Mensagem sem rede')
+    pg.press('#prompt', 'Enter'); pg.wait_for_timeout(600)
+    kept = pg.input_value('#prompt')
+    check('envio sem rede mantém o texto no campo e oferece nova tentativa', kept == 'Mensagem sem rede' and 'não foi enviada' in pg.inner_text('#notice'), pg.inner_text('#notice')[:100])
+    pg.unroute('**/api/generate')
+    pg.click('#notice [data-notice=again]'); pg.wait_for_timeout(150); wait_idle(pg)
+    check('nova tentativa após falha de rede envia uma vez', pg.evaluate("[...document.querySelectorAll('.message.user .msgtext')].filter(e => e.textContent === 'Mensagem sem rede').length") == 1)
+
+    # 7. Rascunho por conversa e após recarregar
+    pg.fill('#prompt', 'Rascunho em A'); pg.wait_for_timeout(400)
+    pg.click('[data-action=new]'); pg.wait_for_timeout(200)
+    check('Nova conversa abre o campo vazio', pg.input_value('#prompt') == '')
+    pg.fill('#prompt', 'Rascunho novo'); pg.wait_for_timeout(400)
+    pg.click('#history .hrow .open >> nth=0'); pg.wait_for_timeout(300)
+    check('rascunho da conversa A volta ao alternar', pg.input_value('#prompt') == 'Rascunho em A', pg.input_value('#prompt'))
+    check('conversa aberta indicada visualmente na lateral', pg.locator('#history .hrow.current [aria-current=page]').count() == 1)
+    pg.reload(); ready(pg); pg.wait_for_timeout(400)
+    check('rascunho retomado depois de recarregar', pg.input_value('#prompt') == 'Rascunho em A', pg.input_value('#prompt'))
+    pg.click('[data-action=new]'); pg.wait_for_timeout(200)
+    check('rascunho da nova conversa também é preservado', pg.input_value('#prompt') == 'Rascunho novo')
+
+    # 8. Anexos e troca para modelo incompatível
+    pg.set_input_files('#file', [FILES + '/foto.png', FILES + '/notas.txt'])
+    pg.wait_for_function("document.querySelectorAll('.attachment').length === 2 && ![...document.querySelectorAll('.attachment')].some(a => a.classList.contains('loading'))")
+    chips = pg.inner_text('#attachments')
+    check('anexos mostram nome, estado e ação de remover', 'foto.png' in chips and 'notas.txt' in chips and 'pronto' in chips and pg.locator('[aria-label="Remover foto.png"]').count() == 1, chips.replace('\n', ' | '))
+    pg.click('#modelbtn'); pg.fill('#pickerSearch', 'V4 Pro'); pg.wait_for_timeout(150)
+    pg.click('[data-pick="openrouter/deepseek/deepseek-v4-pro-0813"]'); pg.wait_for_timeout(150)
+    box = pg.inner_text('#picker .confirm') if pg.locator('#picker .confirm').count() else ''
+    check('modelo sem imagens explica qual arquivo exige atenção', 'foto.png' in box and 'Manter' in box and 'Remover' in box, box.replace('\n', ' '))
+    pg.click('[data-keep]'); pg.wait_for_timeout(100)
+    check('“Manter” preserva o modelo atual e o arquivo', pg.inner_text('#selected') != 'DeepSeek V4 Pro 0813' and pg.locator('.attachment').count() == 2)
+    pg.click('#modelbtn'); pg.fill('#pickerSearch', 'V4 Pro'); pg.wait_for_timeout(150)
+    pg.click('[data-pick="openrouter/deepseek/deepseek-v4-pro-0813"]'); pg.wait_for_timeout(100); pg.click('[data-drop]'); pg.wait_for_timeout(150)
+    check('“Remover arquivo” troca o modelo e mantém o arquivo de texto', pg.inner_text('#selected') == 'DeepSeek V4 Pro 0813' and pg.locator('.attachment').count() == 1, pg.inner_text('#attachments'))
+    pg.fill('#prompt', 'Resuma as notas'); pg.press('#prompt', 'Enter'); pg.wait_for_timeout(150); wait_idle(pg)
+    check('mensagem enviada mantém o anexo visível', 'notas.txt' in pg.locator('.message.user').last.inner_text())
+
+    # 9. Favoritos, rota indisponível e Pro sem conta
+    pg.click('#modelbtn'); pg.fill('#pickerSearch', 'Pro'); pg.wait_for_timeout(150)
+    pg.click('[data-pick="jack/pro"]'); pg.wait_for_timeout(150)
+    note = pg.inner_text('#notice')
+    check('Pro sem conta explica o motivo e oferece alternativas', 'Entre na sua conta' in note and 'Usar Jack AI Flash' in note, note.replace('\n', ' ')[:160])
+    pg.click('#modelbtn'); pg.click('[data-fav="jack/code"]'); pg.wait_for_timeout(300)
+    check('favorito aparece no topo do seletor', pg.inner_text('#pickerList h3 >> nth=0') == 'FAVORITOS' or pg.inner_text('#pickerList h3 >> nth=0').lower() == 'favoritos')
+    pg.keyboard.press('Escape')
+
+    # 10. Menus da lateral: Esc devolve o foco; renomear, fixar e arquivar
+    rowmenu = pg.locator('#history .rowmenu').first
+    rowmenu.focus(); pg.keyboard.press('Enter'); pg.wait_for_timeout(100)
+    opened = pg.locator('.menu-pop').count() == 1
+    pg.keyboard.press('Escape'); pg.wait_for_timeout(100)
+    check('menu da conversa abre pelo teclado e Esc devolve o foco', opened and pg.evaluate("document.activeElement.classList.contains('rowmenu')"))
+    pg.locator('#history .rowmenu').first.click(); pg.click('.menu-pop >> text=Renomear')
+    pg.fill('#renameform input', 'Projeto renomeado'); pg.press('#renameform input', 'Enter'); pg.wait_for_timeout(300)
+    check('renomear atualiza a lista', 'Projeto renomeado' in pg.inner_text('#history'))
+    pg.locator('#history .rowmenu').first.click(); pg.click('.menu-pop >> text=Fixar'); pg.wait_for_timeout(300)
+    check('fixar cria a seção Fixadas', 'Fixadas' in pg.inner_text('#history'))
+    pg.locator('#history .rowmenu').first.click(); pg.click('.menu-pop >> text=Arquivar'); pg.wait_for_timeout(300)
+    check('arquivar move para Arquivadas', 'Arquivadas (1)' in pg.inner_text('#archivedToggle'))
+    pg.fill('#search', 'notas'); pg.wait_for_timeout(200)
+    check('busca por conteúdo encontra conversas', pg.locator('#history .hrow').count() >= 1, pg.inner_text('#history').replace('\n', ' | ')[:160])
+    pg.fill('#search', ''); pg.wait_for_timeout(100)
+
+    # 11. Estúdio: Medidas, Dados, Texto e código e “Usar na conversa”
+    pg.click('[data-action=new]'); pg.wait_for_timeout(200)
+    pg.fill('#prompt', 'Rascunho para o estúdio'); pg.wait_for_timeout(400)
+    pg.click('.studio-strip [data-tab=medidas]'); pg.wait_for_timeout(500)
+    pg.select_option('#m-group', 'Comprimento'); pg.select_option('#m-from', 'polegada'); pg.select_option('#m-to', 'centímetro'); pg.fill('#m-value', '2')
+    r1 = pg.inner_text('#m-result'); pg.click('#m-swap'); r2 = pg.inner_text('#m-result')
+    check('Medidas converte e inverte origem e destino', r1 == '5,08 centímetro' and 'polegada' in r2, (r1, r2))
+    pg.click('#m-swap'); pg.click('#m-use'); pg.wait_for_timeout(200)
+    check('“Usar na conversa” abre prévia editável com destino', pg.locator('#useform textarea').count() == 1 and pg.locator('#useform select').count() == 1, pg.inner_text('#usenote'))
+    pg.fill('#useform textarea', '2 polegada = 5,08 centímetro (editado)')
+    pg.select_option('#useform select', 'new'); pg.click('#useform .primary'); pg.wait_for_timeout(400)
+    v = pg.input_value('#prompt')
+    check('conteúdo entra no rascunho sem apagar o que já estava digitado e sem enviar', v.startswith('Rascunho para o estúdio') and v.endswith('(editado)') and pg.locator('#thread').is_hidden(), repr(v))
+    pg.click('[data-action=studio]'); pg.wait_for_timeout(300); pg.click('#tab-dados'); pg.wait_for_timeout(200)
+    pg.set_input_files('#d-file', FILES + '/vendas.csv'); pg.wait_for_timeout(300)
+    pg.click('[data-col="2"]'); pg.wait_for_timeout(100)
+    firsts = pg.evaluate("[...document.querySelectorAll('table.data tbody tr')].map(r => r.cells[1].textContent)")
+    pg.check('[data-row="0"]'); pg.check('[data-row="2"]')
+    pg.click('#d-use'); pg.wait_for_timeout(200)
+    preview = pg.input_value('#useform textarea')
+    check('Dados importa CSV, ordena e leva as linhas escolhidas', firsts[0] == 'Lápis' and '| Caderno | Sul | 120 |' in preview and 'Mochila' in preview and 'Caneta' not in preview, (firsts, preview[:120]))
+    pg.click('#dialog [data-action=close]')
+    pg.click('#tab-texto'); pg.fill('#t-input', '{\n  "a": 1,\n  "b": [1, 2,]\n}'); pg.click('#t-format'); pg.wait_for_timeout(150)
+    err = pg.inner_text('#t-out')
+    check('Texto e código aponta linha e coluna do erro de JSON', 'linha 3, coluna 14' in err, err.replace('\n', ' ')[:120])
+    stats = pg.inner_text('#t-stats')
+    check('Texto e código conta palavras e caracteres', 'Palavras' in stats and 'Caracteres' in stats, stats.replace('\n', ' '))
+    axe(pg, 'Estúdio 1440 px')
+    pg.click('.nav[data-view=library]'); pg.wait_for_timeout(500)
+    pg.click('[data-cap=imagens]'); pg.wait_for_timeout(150)
+    names = pg.evaluate("[...document.querySelectorAll('.mcard h3')].map(h => h.textContent)")
+    check('Biblioteca filtra por capacidade (análise de imagens)', 'DeepSeek V4 Pro 0813' not in names and 'Claude Sonnet 5.5' in names, len(names))
+    pg.click('[data-cap=imagens]'); pg.click('[data-task=codigo]'); pg.wait_for_timeout(150)
+    titles = pg.evaluate("[...document.querySelectorAll('.libsection h2')].map(h => h.firstChild.textContent.trim())")
+    check('Biblioteca: seção Jack AI primeiro e fornecedores separados', titles[0] == 'Jack AI' and 'Anthropic' in titles, titles)
+    pg.click('[data-task=todas]'); pg.wait_for_timeout(150)
+    lib = pg.inner_text('#library') if pg.locator('#library').count() else pg.inner_text('main')
+    pg.evaluate("document.querySelectorAll('#library details').forEach(d => d.open = true)")
+    lib = pg.inner_text('#library')
+    check('Biblioteca só com modelos pagos e sem tokens nem custo em US$', 'Gratuito' not in lib and 'gratuit' not in lib.lower() and 'US$' not in lib and not re.search(r'mi de tokens|mil tokens|tokens de', lib), re.findall(r'.{20}(?:US\$|tokens).{20}', lib)[:3])
+    check('Biblioteca indica os modelos com esforço ajustável', 'Esforço ajustável' in lib)
+    pg.evaluate("document.querySelectorAll('#library details').forEach(d => d.open = false)")
+    axe(pg, 'Biblioteca 1440 px')
+
+    # 11b. Nível de esforço, raciocínio, pesquisa na web, continuação, PDF, leitura e atalhos
+    pg.click('[data-action=new]'); pg.wait_for_timeout(200)
+    pg.click('#modelbtn'); pg.fill('#pickerSearch', 'Jack AI Code'); pg.wait_for_timeout(120); pg.click('[data-pick="jack/code"]'); pg.wait_for_timeout(150)
+    pg.click('#effort'); pg.wait_for_timeout(150)
+    radios = pg.evaluate("[...document.querySelectorAll('.menu-pop [role=menuitemradio]')].map(b => b.textContent + ':' + b.getAttribute('aria-checked'))")
+    check('menu de esforço com Automático, Baixo, Médio e Alto', len(radios) == 4 and radios[0].startswith('Automático') and radios[0].endswith('true'), radios)
+    pg.keyboard.press('ArrowDown'); pg.keyboard.press('ArrowDown'); pg.keyboard.press('ArrowDown'); pg.keyboard.press('Enter'); pg.wait_for_timeout(150)
+    check('escolher pelo teclado: esforço Alto e foco de volta ao botão', pg.inner_text('#effortlabel') == 'Esforço alto' and active_id(pg) == 'effort' and 'active' in pg.get_attribute('#effort', 'class'))
+    pg.click('#effort'); pg.wait_for_timeout(100); pg.keyboard.press('Escape'); pg.wait_for_timeout(100)
+    check('Esc fecha o menu de esforço e devolve o foco', pg.locator('.menu-pop').count() == 0 and active_id(pg) == 'effort')
+    send(pg, 'Explique recursão com um exemplo')
+    head = pg.evaluate("document.querySelector('#messages article.assistant .msghead').textContent")
+    check('resposta mostra o raciocínio recolhível e o esforço usado', pg.locator('#messages details.reasoning').count() == 1 and 'Esforço alto' in head and 'max_tokens 17408' in pg.inner_text('#messages'), head)
+    pg.click('#messages details.reasoning summary'); pg.wait_for_timeout(100)
+    check('raciocínio abre com o texto do modelo', 'Entendendo o pedido' in pg.inner_text('#messages details.reasoning'))
+    pg.click('#effort'); pg.wait_for_timeout(100); pg.click('.menu-pop [role=menuitemradio] >> nth=0'); pg.wait_for_timeout(100)
+    pg.click('#web'); pg.wait_for_timeout(100)
+    check('botão de pesquisa na web fica pressionado', pg.get_attribute('#web', 'aria-pressed') == 'true')
+    send(pg, 'Notícias de teste de hoje')
+    links = pg.evaluate("[...document.querySelectorAll('#messages article.assistant:last-of-type .sources a')].map(a => a.href + '|' + a.rel)")
+    check('pesquisa na web mostra as fontes com links seguros', len(links) == 2 and all('noopener' in l for l in links) and 'javascript' not in ''.join(links), links)
+    pg.evaluate("document.activeElement.blur(); document.querySelector('#toast').textContent = ''; document.querySelector('#messages details.reasoning').open = true"); pg.wait_for_timeout(200)
+    pg.screenshot(path=OUT + '/esforco-e-web-1440.png')
+    pg.click('#web'); pg.wait_for_timeout(100)
+    send(pg, 'Texto longo [truncar]')
+    check('resposta cortada oferece “Continuar resposta”', pg.locator('[data-continue]').count() == 1)
+    pg.click('[data-continue]'); pg.wait_for_timeout(150); wait_idle(pg)
+    check('“Continuar resposta” pede a continuação sem repetir o texto', 'Continue a resposta exatamente de onde parou' in pg.inner_text('#messages') and pg.locator('[data-continue]').count() == 0)
+    pg.set_input_files('#file', FILES + '/contrato.pdf'); pg.wait_for_timeout(300)
+    chip = pg.inner_text('#attachments')
+    check('PDF anexado aparece como pronto', 'contrato.pdf' in chip and 'PDF' in chip, chip.replace('\n', ' '))
+    send(pg, 'Resuma o PDF')
+    check('PDF chega ao modelo', 'PDF recebido: contrato.pdf' in pg.inner_text('#messages') or 'PDF recebido: `contrato.pdf`' in pg.inner_text('#messages'), pg.inner_text('#messages article.assistant:last-of-type')[-160:])
+    check('respostas oferecem “Ouvir”', pg.locator('[data-speak]').count() >= 1)
+    pg.evaluate("document.activeElement.blur()"); pg.keyboard.press('?'); pg.wait_for_timeout(150)
+    check('tecla ? abre os atalhos de teclado', pg.locator('#dialog[open] .keys').count() == 1 and 'Ctrl/⌘' in pg.inner_text('#dialog'))
+    axe(pg, 'atalhos 1440 px')
+    pg.keyboard.press('Escape'); pg.wait_for_timeout(100)
+    pg.click('[data-action=settings]'); pg.wait_for_timeout(150)
+    st = pg.inner_text('#dialog')
+    check('Configurações: tamanho das respostas sem falar em tokens, dados e atalhos', 'Tamanho das respostas' in st and 'token' not in st.lower() and 'Baixar meus dados' in st and 'Excluir todas as conversas' in st, st.replace('\n', ' ')[:200])
+    axe(pg, 'Configurações 1440 px')
+    pg.keyboard.press('Escape'); pg.wait_for_timeout(100)
+
+    # 12. Chat temporário e recarregamento
+    pg.click('[data-action=new]'); pg.wait_for_timeout(200)
+    pg.click('#tempchip'); pg.wait_for_timeout(150)
+    check('estado do Chat temporário visível perto do campo', pg.locator('#tempnote').is_visible() and 'não entram no histórico' in pg.inner_text('#tempnote'))
+    send(pg, 'Mensagem temporária secreta')
+    pg.fill('#prompt', 'rascunho temporário secreto'); pg.wait_for_timeout(400)
+    before = len(pg.evaluate("fetch('/api/chats').then(r => r.json())"))
+    pg.reload(); ready(pg); pg.wait_for_timeout(500)
+    stored = pg.evaluate("JSON.stringify(localStorage) + JSON.stringify(sessionStorage)")
+    chats = pg.evaluate("fetch('/api/chats').then(r => r.json())")
+    check('após recarregar, a conversa temporária e o rascunho somem', pg.locator('.message').count() == 0 and pg.input_value('#prompt') == '' and 'secreto' not in stored and 'secreta' not in stored, pg.inner_text('#notice')[:120])
+    check('chat temporário continua ativo e avisa o descarte', pg.get_attribute('#tempchip', 'aria-pressed') == 'true' and 'descartada' in pg.inner_text('#notice'))
+    check('conversa temporária não entrou no histórico do servidor', not any('temporária secreta' in json.dumps(c, ensure_ascii=False) for c in chats) and len(chats) == before)
+    pg.click('#tempchip'); pg.wait_for_timeout(150)
+
+    # 12b. Login com Google (servidor de contrato imita a tela do Google)
+    pg.click('[data-action=account]'); pg.wait_for_timeout(150)
+    check('diálogo de entrada oferece “Continuar com Google”', pg.locator('#dialog [data-action=google]').count() == 1)
+    pg.screenshot(path=OUT + '/entrar-google-1440.png')
+    with pg.expect_navigation(): pg.click('#dialog [data-action=google]')
+    ready(pg); pg.wait_for_timeout(500)
+    who = pg.evaluate("fetch('/api/session', {method: 'POST'}).then(r => r.json())")
+    check('login com Google conclui e volta ao Jack AI com a conta', who.get('google') is True and who.get('email') == 'pessoa.teste@example.com' and pg.inner_text('#accountlabel') == 'Conta Google' and location_ok(pg), {'conta': who.get('email'), 'url': pg.url})
+    print('erros de console (desktop):', errors)
+    check('sem erros de JavaScript no desktop', not errors, errors[:3])
+
+    # 13. Capturas de início no desktop (sessão limpa)
+    clean = browser.new_context(viewport={'width': 1440, 'height': 900}, device_scale_factor=1, bypass_csp=True)
+    h = clean.new_page(); h.goto(BASE); ready(h); h.wait_for_timeout(1200); h.evaluate("document.activeElement.blur()"); h.wait_for_timeout(100)
+    h.screenshot(path=OUT + '/inicio-desktop-1440.png')
+    clean.close()
+
+    # 14. Celular 390 px
+    m = browser.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True, bypass_csp=True,
+                            user_agent='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36')
+    mp = m.new_page(); merr = []
+    mp.on('pageerror', lambda e: merr.append(str(e)))
+    mp.goto(BASE); ready(mp); mp.wait_for_timeout(1200)
+    box = mp.locator('#composer').bounding_box()
+    check('celular: campo aparece na primeira tela', box['y'] + box['height'] <= 844, box)
+    check('celular: lateral recolhida em menu', mp.locator('#sidebar').bounding_box()['x'] < 0 and mp.locator('.menu').is_visible())
+    check('celular: sem rolagem horizontal', mp.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+    mp.screenshot(path=OUT + '/inicio-celular-390.png')
+    axe(mp, 'início 390 px')
+    mp.click('.menu'); mp.wait_for_timeout(300)
+    opened = mp.evaluate("document.body.classList.contains('mobileopen')")
+    mp.keyboard.press('Escape'); mp.wait_for_timeout(300)
+    check('celular: Esc fecha o menu e devolve o foco ao botão', opened and mp.evaluate("document.activeElement.classList.contains('menu')"))
+    mp.tap('[data-suggestion=write]'); mp.wait_for_timeout(100)
+    mp.keyboard.type('Olá, tudo bem? Quero ajustar o texto do convite.')
+    mp.keyboard.press('Enter')
+    check('celular: Enter quebra a linha (envio pelo botão)', mp.locator('.message').count() == 0 and mp.input_value('#prompt').count('\n') >= 3)
+    # Teclado virtual simulado: a área visível encolhe para 390x470 com o campo focado.
+    mp.focus('#prompt'); mp.set_viewport_size({'width': 390, 'height': 470}); mp.wait_for_timeout(500)
+    sb = mp.locator('#send').bounding_box(); pb = mp.locator('#prompt').bounding_box()
+    caret = mp.evaluate("(() => { const t = document.querySelector('#prompt'); return t.scrollTop + t.clientHeight >= t.scrollHeight - 2; })()")
+    check('teclado virtual (emulado): linha em edição e botão de envio visíveis', sb['y'] + sb['height'] <= 470 and pb['y'] >= 0 and caret, {'send': sb, 'prompt': pb})
+    mp.set_viewport_size({'width': 390, 'height': 844}); mp.wait_for_timeout(300)
+    mp.tap('#send'); mp.wait_for_timeout(200); wait_idle(mp)
+    mp.fill('#prompt', 'Pode mostrar a função corrigida?'); mp.tap('#send'); mp.wait_for_timeout(200); wait_idle(mp)
+    check('celular: envio pelo botão funciona', 'somaPares' in mp.inner_text('#messages'))
+    tb = mp.evaluate("(() => { const t = document.querySelector('.toolbar'); return {scroll: t.scrollWidth, client: t.clientWidth, send: document.querySelector('#send').getBoundingClientRect().right, width: innerWidth, effort: !!document.querySelector('#effort').offsetWidth, web: !!document.querySelector('#web').offsetWidth}; })()")
+    check('celular: faixa do campo cabe na tela com esforço e web', tb['scroll'] <= tb['client'] + 1 and tb['send'] <= tb['width'] and tb['effort'] and tb['web'], tb)
+    mp.evaluate("document.activeElement.blur()"); mp.wait_for_timeout(300)
+    mp.screenshot(path=OUT + '/conversa-celular-390.png')
+    mp.set_viewport_size({'width': 390, 'height': 470}); mp.focus('#prompt'); mp.wait_for_timeout(400)
+    sb = mp.locator('#send').bounding_box()
+    check('teclado virtual (emulado) na conversa: envio visível', sb['y'] + sb['height'] <= 470, sb)
+    mp.set_viewport_size({'width': 390, 'height': 844})
+    axe(mp, 'conversa 390 px')
+    check('sem erros de JavaScript no celular', not merr, merr[:3])
+    browser.close()
+
+ok = sum(r['ok'] for r in results)
+print('\nRESUMO:', ok, 'de', len(results), 'verificações aprovadas')
+json.dump(results, open(os.path.join(OUT, 'resultados-qa.json'), 'w'), ensure_ascii=False, indent=1)
+sys.exit(0 if ok == len(results) else 1)

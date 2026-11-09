@@ -1,0 +1,8 @@
+.env
+.git
+data
+node_modules
+screenshots
+dist
+*.zip
+.qa
