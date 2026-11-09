@@ -23,10 +23,11 @@ O Jack AI já vem com o login com Google pronto (OAuth 2.0 com PKCE). Falta só 
 2. **Tipo de aplicativo**: **Aplicativo da Web**. Nome: `Jack AI web`.
 3. **Origens JavaScript autorizadas**: pode deixar vazio. O Jack AI não usa o SDK JavaScript do Google; tudo passa pelo servidor.
 4. **URIs de redirecionamento autorizados**: clique em **Adicionar URI** e cole exatamente:
-   - Produção na Discloud: `https://jackai.discloud.app/api/auth/google/callback`
+   - Produção na Discloud: `https://jackai.discloud.dev/api/auth/google/callback`
+   - Se o site também abrir em `jackai.discloud.app`, adicione `https://jackai.discloud.app/api/auth/google/callback`
    - (Opcional) Teste local: `http://localhost:3000/api/auth/google/callback`
 
-   Troque `jackai.discloud.app` pelo seu domínio, se for outro. O endereço precisa bater letra por letra: `https`, sem barra no final.
+   Use o endereço que aparece na barra do navegador quando o site está aberto. Troque `jackai` pelo seu subdomínio, se for outro. O endereço precisa bater letra por letra: `https`, sem barra no final.
 5. Clique em **Criar**. Copie o **ID do cliente** (termina em `.apps.googleusercontent.com`) e a **Chave secreta do cliente** (começa com `GOCSPX-`). **O segredo só aparece agora**; se perder, gere outro em **Clientes → Jack AI web → Adicionar segredo**.
 
 ## 4. Colocar as chaves no servidor
@@ -36,12 +37,12 @@ No `.env` da aplicação (na Discloud, edite o arquivo `.env` da implantação),
 ```env
 GOOGLE_CLIENT_ID=123456789-abcdefg.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-seu-segredo-aqui
-PUBLIC_URL=https://jackai.discloud.app
+PUBLIC_URL=https://jackai.discloud.dev
 ```
 
-`PUBLIC_URL` é o endereço público do site, sem barra no final. Na Discloud ele já vem definido como `https://jackai.discloud.app` (em `discloud.js` e em `.env.example`), então basta acrescentar as duas chaves do Google. O servidor monta o redirecionamento como `PUBLIC_URL + /api/auth/google/callback`. Se preferir, defina o endereço completo em `GOOGLE_REDIRECT_URI`.
+`PUBLIC_URL` é o endereço público do site, sem barra no final. Se ficar vazio, o servidor usa o endereço em que o site foi aberto. Ele precisa ser o mesmo domínio cadastrado no Google: se o site abre em `jackai.discloud.dev`, use `.dev`. O servidor monta o redirecionamento como `PUBLIC_URL + /api/auth/google/callback`. Se preferir, defina o endereço completo em `GOOGLE_REDIRECT_URI`.
 
-Reinicie a aplicação. O Google pode levar de 5 minutos a algumas horas para aplicar um URI novo.
+Reinicie a aplicação. Se algo der errado, o motivo aparece nos logs da Discloud em linhas que começam com `[google]`. O Google pode levar de 5 minutos a algumas horas para aplicar um URI novo.
 
 ## 5. Testar
 
@@ -61,6 +62,7 @@ Reinicie a aplicação. O Google pode levar de 5 minutos a algumas horas para ap
 
 | O que aparece | O que fazer |
 | --- | --- |
+| Fica parado em `.../api/auth/google/callback` | O Google voltou para um domínio diferente do site (por exemplo `.app` em vez de `.dev`). Ajuste `PUBLIC_URL` e o URI cadastrado para o mesmo domínio da barra do navegador. |
 | `Erro 400: redirect_uri_mismatch` | O URI em **Clientes → URIs de redirecionamento** não é igual ao do servidor. Confira `https`, domínio, `/api/auth/google/callback` e a ausência de barra no final. Espere alguns minutos depois de salvar. |
 | `Acesso bloqueado: este app não concluiu o processo de verificação` | O app está **Em teste** e a conta não está em **Usuários de teste**. Adicione a conta ou publique o app. |
 | “O login com Google não está configurado nesta instalação.” | Faltam `GOOGLE_CLIENT_ID` ou `GOOGLE_CLIENT_SECRET` no `.env`, ou a aplicação não foi reiniciada. |

@@ -82,7 +82,7 @@
  {
   "name": "conversa longa rola e a última resposta fica visível acima do campo",
   "ok": true,
-  "detail": "{'sh': 3296, 'ch': 575, 'lastBottom': 595.109375, 'dockTop': 631.25}"
+  "detail": "{'sh': 3419, 'ch': 575, 'lastBottom': 595.453125, 'dockTop': 631.25}"
  },
  {
   "name": "gerar nova versão mantém as anteriores acessíveis",
@@ -321,6 +321,26 @@
  },
  {
   "name": "respostas oferecem “Ouvir”",
+  "ok": true,
+  "detail": ""
+ },
+ {
+  "name": "código vira arquivos com nome (comando de terminal fica de fora)",
+  "ok": true,
+  "detail": "{'arquivos': ['main.lua', 'utils/texto.lua'], 'blocos': ['main.lua', 'utils/texto.lua']}"
+ },
+ {
+  "name": "“Baixar .zip” entrega um .zip válido com os arquivos",
+  "ok": true,
+  "detail": "{'zip': 'explique-recursao-com-um-exemplo.zip', 'conteudo': ['main.lua', 'utils/texto.lua']}"
+ },
+ {
+  "name": "cada arquivo também pode ser baixado sozinho",
+  "ok": true,
+  "detail": "texto.lua"
+ },
+ {
+  "name": "arquivo longo aparece recolhido e abre com “Mostrar tudo”",
   "ok": true,
   "detail": ""
  },

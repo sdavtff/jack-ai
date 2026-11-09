@@ -46,6 +46,10 @@ function answerFor(payload) {
   const last = payload.messages.filter(m => m.role === 'user').at(-1);
   const content = typeof last.content === 'string' ? last.content : last.content.map(p => p.text || '[imagem]').join(' ');
   const system = payload.messages.find(m => m.role === 'system')?.content || '';
+  if (/\[arquivos\]/i.test(content)) return ['Pronto! O projeto tem dois arquivos em Lua.\n\n**main.lua**\n```lua\nlocal texto = require(\"utils.texto\")\nprint(texto.contar(\"O gato viu o rato\"))\n```\n\n',
+    '```lua utils/texto.lua\nlocal M = {}\n\nfunction M.contar(frase)\n  local n = 0\n  for _ in frase:gmatch(\"%S+\") do n = n + 1 end\n  return n\nend\n\nreturn M\n```\n\n',
+    'Para rodar:\n\n```bash\nlua main.lua\n```'];
+  if (/\[arquivo-longo\]/i.test(content)) return ['Segue o script.\n\n```lua contador.lua\n' + Array.from({length: 40}, (_, i) => 'print(\"linha ' + (i + 1) + '\")').join('\n') + '\n```'];
   if (/python/i.test(content) && /\[codigo\]|pares|corrig/i.test(content)) return ['Aqui está uma implementação simples. Ela percorre a lista uma vez e soma apenas os números pares.\n\n',
     '```python\ndef soma_pares(numeros: list[int]) -> int:\n    """Soma apenas os números pares da lista."""\n    total = 0\n    for n in numeros:\n        if n % 2 == 0:  # par\n            total += n\n    return total\n```\n\n',
     'Para testar, rode `soma_pares([1, 2, 3, 4])` e confira se o resultado é **6**.'];

@@ -1,6 +1,6 @@
 # Jack AI
 
-A edição atual traz o redesign de novembro de 2026: início focado na primeira mensagem, perfis Jack AI Flash, Pro, Studio e Code, catálogo só com modelos pagos de 2026 separados por fornecedor, nível de esforço ajustável com raciocínio visível, pesquisa na web com fontes, PDFs, ditado, leitura em voz alta, [login com Google](GOOGLE_LOGIN.md) e o [Estúdio com Medidas, Dados e Texto e código](ESTUDIO.md).
+A edição atual traz o redesign de novembro de 2026: início focado na primeira mensagem, perfis Jack AI Flash, Pro, Studio e Code, catálogo só com modelos pagos de 2026 separados por fornecedor, nível de esforço ajustável com raciocínio visível, pesquisa na web com fontes, código entregue como arquivos com download em .zip, PDFs, ditado, leitura em voz alta, [login com Google](GOOGLE_LOGIN.md) e o [Estúdio com Medidas, Dados e Texto e código](ESTUDIO.md).
 
 Leia [ATUALIZACAO.md](ATUALIZACAO.md) para atualizar uma instalação existente e [ENTREGA.md](ENTREGA.md) para o relatório da entrega, com testes e tabela de modelos.
 
@@ -83,7 +83,7 @@ As chaves ficam no ambiente do servidor. O provedor recebe o histórico necessá
 | Streaming | Teste de contrato ponta a ponta executado entre a API, SQLite e um servidor HTTP local de teste com o formato do OpenRouter. Verifica fragmentos, edição e ausência de persistência no modo temporário. |
 | Inferência real | Pendente. O ambiente não forneceu uma chave do OpenRouter com créditos. O script scripts/check-provider.mjs permite realizar o teste após configurar. |
 | Navegador e console | Sem erros de JavaScript nos fluxos testados. A exportação em PDF e um dispositivo físico com teclado virtual continuam sem validação. |
-| Interface | 88 verificações em Chromium headless (1440 px e 390 px) com `tests/capture.py`, incluindo teclado, rascunhos, interrupção, falha com nova tentativa, anexo incompatível, Biblioteca sem tokens nem US$, menu de esforço, raciocínio, fontes da web, “Continuar resposta”, PDF, atalhos, login com Google, Chat temporário após recarregar e auditoria axe-core. Teclado virtual testado por emulação. |
+| Interface | 92 verificações em Chromium headless (1440 px e 390 px) com `tests/capture.py`, incluindo teclado, rascunhos, interrupção, falha com nova tentativa, anexo incompatível, Biblioteca sem tokens nem US$, menu de esforço, raciocínio, fontes da web, “Continuar resposta”, PDF, atalhos, login com Google, Chat temporário após recarregar e auditoria axe-core. Teclado virtual testado por emulação. |
 | Material visual | As capturas em screenshots/ são reais e foram feitas com o servidor de contrato. A conversa mostrada não comprova inferência. Os mockups antigos estão em screenshots/anterior/. |
 
 Para repetir os testes, use `npm test`. Os servidores de contrato em `tests/support/` só são usados nos testes e não entram no build publicado. Para as capturas e a verificação da interface, siga as instruções no topo de `tests/capture.py` (Playwright Python e Chrome ou Chromium).

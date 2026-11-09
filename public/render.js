@@ -1,5 +1,17 @@
 import { Marked } from './vendor/marked/marked.js';
 import { mathElement } from './math.js';
+import { extractFiles } from './files.js';
+
+// Baixa um texto como arquivo (blocos de código e .zip das respostas).
+export function saveFile(name, data, type = 'text/plain;charset=utf-8') {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], {type}));
+  a.download = String(name).split('/').pop() || 'arquivo.txt';
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+// Blocos da mensagem em renderização, na ordem do texto (nomes de arquivo e linguagem).
+let blocks = [], blockAt = 0;
 
 const md = new Marked();
 const delimiters = /\$|\\[([]/;
@@ -20,7 +32,9 @@ const node = (tag, ...children) => {
 const keyWords = /^(?:as|async|await|break|case|catch|class|const|continue|def|do|else|elif|except|export|extends|false|False|finally|for|from|function|if|import|in|interface|let|match|new|None|null|of|pass|print|private|public|raise|return|static|struct|switch|throw|true|True|try|type|var|while|with|yield|SELECT|FROM|WHERE|JOIN|ORDER|BY|LIMIT|INSERT|INTO|UPDATE|DELETE)$/;
 const lexeme = /\/\/[^\n]*|\/\*[\s\S]*?\*\/|#[^\n]*|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`|\b\d+(?:\.\d+)?\b|[A-Za-z_$][\w$]*/g;
 
-function codeBlock(text, language) {
+function codeBlock(text, info) {
+  const meta = blocks[blockAt++] || {};
+  const language = (meta.lang || String(info || '').split(/\s/)[0]).slice(0, 40);
   const code = node("code");
   let last = 0;
   for (const match of text.matchAll(lexeme)) {
@@ -49,9 +63,34 @@ function codeBlock(text, language) {
   // Rolagem horizontal acessível pelo teclado.
   const pre = node("pre",code);
   pre.tabIndex = 0;
-  pre.setAttribute("aria-label","Código" + (language ? " em " + language : ""));
-  const box = node("div",node("header",node("span",language || "Código"),copy),pre);
+  const file = meta.path && !meta.skip ? meta.path : "";
+  pre.setAttribute("aria-label",(file ? "Arquivo " + file : "Código") + (language ? " em " + language : ""));
+  const title = node("span");
+  title.className = "code-title";
+  if (file) { const b = node("b",file); title.append(b, language ? node("small",language) : ""); }
+  else title.append(language || "Código");
+  const actions = node("span");
+  actions.className = "code-actions";
+  if (file) {
+    const save = node("button","Baixar");
+    save.type = "button";
+    save.setAttribute("aria-label","Baixar " + file);
+    save.onclick = () => saveFile(file, text);
+    actions.append(save);
+  }
+  actions.append(copy);
+  const box = node("div",node("header",title,actions),pre);
   box.className = "message-code";
+  // Arquivos longos aparecem recolhidos; o botão mostra o conteúdo inteiro.
+  const count = text.split("\n").length;
+  if (count > 24) {
+    pre.classList.add("folded");
+    const more = node("button","Mostrar tudo · " + count + " linhas");
+    more.type = "button"; more.className = "code-more";
+    more.setAttribute("aria-expanded","false");
+    more.onclick = () => { const open = pre.classList.toggle("folded") === false; more.setAttribute("aria-expanded",String(open)); more.textContent = open ? "Recolher" : "Mostrar tudo · " + count + " linhas"; };
+    box.append(more);
+  }
   return box;
 }
 
@@ -85,7 +124,7 @@ function renderTokens(tokens) {
     switch (t.type) {
       case "space": continue;
       case "formula": item = mathElement(t.text,t.display); break;
-      case "code": item = codeBlock(t.text,t.lang?.split(/\s/)[0].slice(0,40)); break;
+      case "code": item = t.codeBlockStyle === "indented" ? node("pre",node("code",t.text)) : codeBlock(t.text,t.lang); break;
       case "codespan": item = node("code",t.text); break;
       case "table": item = table(t); break;
       case "link": case "image": item = safeLink(t); break;
@@ -107,6 +146,7 @@ function renderTokens(tokens) {
 
 export function renderMessage(element, text) {
   element.classList.add("rendered-message");
+  blocks = extractFiles(text); blockAt = 0;
   try { element.replaceChildren(renderTokens(md.lexer(String(text)))); }
   catch { element.textContent = String(text); }
 }

@@ -16,4 +16,11 @@
 .message-code button:hover{background:#383448}
 .message-code pre{overflow:auto;margin:0;padding:13px 15px;tab-size:4;white-space:pre;line-height:1.55}
 .message-code code{font:13px/1.55 ui-monospace,monospace}
+.message-code .code-title{display:inline-flex;align-items:baseline;gap:8px;min-width:0;overflow:hidden}
+.message-code .code-title b{color:#f2eefb;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.message-code .code-title small{color:#a9a3b8;font-size:11px}
+.message-code .code-actions{display:inline-flex;gap:2px;flex:none}
+.message-code pre.folded{max-height:26em;overflow-y:hidden;-webkit-mask-image:linear-gradient(#000 70%,transparent);mask-image:linear-gradient(#000 70%,transparent)}
+.message-code .code-more{display:block;width:100%;text-align:center;padding:8px;border-top:1px solid #ffffff1a;border-radius:0;color:#d0cada;font:600 12.5px/1.4 system-ui}
+.message-code .code-more:focus-visible,.message-code button:focus-visible{outline:2px solid #9781e8;outline-offset:-2px}
 .hl-string{color:#aad4ae}.hl-keyword{color:#c5acff}.hl-comment{color:#9e9bab;font-style:italic}.hl-number{color:#eeb78f}

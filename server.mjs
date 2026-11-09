@@ -66,26 +66,38 @@ async function googlePhoto(url) {
   } catch { return ''; }
 }
 async function googleCallback(req, res, url) {
-  const back = (code, cookies = []) => { res.writeHead(302, {Location: '/#/?google=' + code, 'Cache-Control': 'no-store', 'Set-Cookie': [oauthCookie('', 0), ...cookies]}); res.end(); };
+  const back = (code, cookies = [], why = '') => {
+    if (!['ok', 'conectado'].includes(code)) console.warn('[google] login não concluído: ' + code + (why ? ' — ' + why : ''));
+    res.writeHead(302, {Location: '/#/?google=' + code, 'Cache-Control': 'no-store', 'Set-Cookie': [oauthCookie('', 0), ...cookies]}); res.end();
+  };
   const g = googleConfig();
   if (!g) return back('desativado');
   const state = url.searchParams.get('state') || '', rec = oauthStates.get(state);
   oauthStates.delete(state);
   const bound = (req.headers.cookie || '').match(/(?:^|; )jack_oauth=([\w-]+)/)?.[1];
-  if (url.searchParams.get('error')) return back('cancelado');
-  if (!rec || bound !== state || rec.expires < Date.now()) return back('expirado');
+  if (url.searchParams.get('error')) return back('cancelado', [], 'o Google devolveu ' + String(url.searchParams.get('error')).slice(0, 60));
+  if (!rec) return back('expirado', [], 'estado desconhecido (o servidor reiniciou ou o retorno foi repetido)');
+  if (bound !== state) return back('expirado', [], bound ? 'cookie de outro login' : 'o navegador não enviou o cookie jack_oauth (retorno aberto em outro navegador ou aba anônima)');
+  if (rec.expires < Date.now()) return back('expirado', [], 'mais de 10 minutos entre a ida e a volta');
   let tokens;
   try {
     const r = await fetch(g.token, {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000), headers: {'Content-Type': 'application/x-www-form-urlencoded'},
       body: new URLSearchParams({code: url.searchParams.get('code') || '', client_id: g.id, client_secret: g.secret, redirect_uri: rec.redirect, grant_type: 'authorization_code', code_verifier: rec.verifier})});
-    if (!r.ok) return back('falha');
+    if (!r.ok) {
+      // A resposta de erro do Google não traz segredos: só o código do erro (ex.: invalid_client).
+      let detail = ''; try { const e = await r.json(); detail = [e.error, e.error_description].filter(Boolean).join(': '); } catch {}
+      return back('falha', [], 'troca do código recusada pelo Google (HTTP ' + r.status + (detail ? ', ' + detail.slice(0, 200) : '') + ')' +
+        (/invalid_client/.test(detail) ? ' — confira GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET' : /redirect_uri/.test(detail) ? ' — confira PUBLIC_URL e o URI cadastrado' : ''));
+    }
     tokens = await r.json();
-  } catch { return back('falha'); }
+  } catch (e) { return back('falha', [], 'sem resposta do Google ao trocar o código (' + (e.name || 'erro') + ')'); }
   // O ID token veio direto do Google por HTTPS e com o segredo do cliente; ainda assim,
   // conferimos emissor, público, validade e nonce.
   const claims = decodeJwt(tokens.id_token);
   const aud = Array.isArray(claims?.aud) ? claims.aud : [claims?.aud];
-  if (!claims || !['https://accounts.google.com', 'accounts.google.com'].includes(claims.iss) || !aud.includes(g.id) || !(claims.exp * 1000 > Date.now()) || claims.nonce !== rec.nonce || typeof claims.sub !== 'string') return back('falha');
+  const invalid = !claims ? 'ID token ilegível' : !['https://accounts.google.com', 'accounts.google.com'].includes(claims.iss) ? 'emissor inesperado' : !aud.includes(g.id) ? 'público (aud) diferente do GOOGLE_CLIENT_ID'
+    : !(claims.exp * 1000 > Date.now()) ? 'ID token vencido (confira o relógio do servidor)' : claims.nonce !== rec.nonce ? 'nonce diferente' : typeof claims.sub !== 'string' ? 'sem identificador da conta' : '';
+  if (invalid) return back('falha', [], invalid);
   if (claims.email_verified !== true || typeof claims.email !== 'string') return back('nao-verificado');
   const email = claims.email.trim().toLowerCase().slice(0, 254), sub = claims.sub.slice(0, 255);
   const name = String(claims.name || claims.given_name || email.split('@')[0]).trim().slice(0, 80) || 'Pessoa';
@@ -106,7 +118,7 @@ async function googleCallback(req, res, url) {
     const photo = await googlePhoto(claims.picture);
     if (current && !current.email) {
       // Visitante vira conta e mantém as conversas que já tinha.
-      if (!sql('UPDATE OR IGNORE users SET email=?,google_sub=?,name=?,photo=? WHERE id=? AND email IS NULL', email, sub, name, photo, current.id).changes) return back('falha');
+      if (!sql('UPDATE OR IGNORE users SET email=?,google_sub=?,name=?,photo=? WHERE id=? AND email IS NULL', email, sub, name, photo, current.id).changes) return back('falha', [], 'não foi possível transformar o visitante em conta');
       sql('DELETE FROM sessions WHERE user=?', current.id);
       id = current.id;
     } else {
@@ -226,12 +238,21 @@ http.createServer(async (req, res) => {
     const token = digest((req.headers.cookie || '').match(/(?:^|; )jack=([a-f0-9]+)/)?.[1] || '');
     let u = one('SELECT users.* FROM sessions JOIN users ON users.id=sessions.user WHERE token=? AND expires>?', token, Date.now());
     const b = method === 'GET' ? {} : await json(req);
-    if (p === '/api/auth/google/callback' && method === 'GET') { limit('oauth' + req.socket.remoteAddress, 30); return await googleCallback(req, res, url); }
+    if (p === '/api/auth/google/callback' && method === 'GET') {
+      // O retorno do Google sempre termina em redirecionamento para o app, com o motivo em pt-BR.
+      // O motivo técnico vai para o log do servidor (painel da Discloud → Logs).
+      try { limit('oauth-back' + req.socket.remoteAddress, 60); return await googleCallback(req, res, url); }
+      catch (e) {
+        console.error('[google] erro no retorno do login:', e.status === 429 ? 'muitas tentativas' : e);
+        if (!res.headersSent) { res.writeHead(302, {Location: '/#/?google=' + (e.status === 429 ? 'limite' : 'falha'), 'Cache-Control': 'no-store', 'Set-Cookie': oauthCookie('', 0)}); return res.end(); }
+        return;
+      }
+    }
     if (p === '/api/auth/google/start' && method === 'GET') {
       const g = googleConfig();
       if (!g) { res.writeHead(302, {Location: '/#/?google=desativado'}); return res.end(); }
       if (!u) { res.writeHead(302, {Location: '/#/?google=sessao'}); return res.end(); }
-      limit('oauth' + req.socket.remoteAddress, 30);
+      limit('oauth' + req.socket.remoteAddress, 60);
       const state = randomBytes(24).toString('base64url'), verifier = randomBytes(48).toString('base64url'), nonce = randomBytes(18).toString('base64url');
       const mode = url.searchParams.get('mode') === 'link' && u.email ? 'link' : 'login', redirect = googleRedirect(req);
       oauthStates.set(state, {user: u.id, mode, verifier, nonce, redirect, expires: Date.now() + 600000});
@@ -382,7 +403,7 @@ http.createServer(async (req, res) => {
         res.write(JSON.stringify({route: {...snap, profile: entry.kind === 'profile' ? entry.id : null}, requestId}) + '\n');
         let reply = '', failure = '', status = null, reasoning = '', sources = null, truncated = false;
         try {
-          for await (const ev of generate({route, messages: providerMessages, temperature: prefs.temperature ?? 0.7, maxTokens: prefs.maxTokens || 1024, effort, web, signal: ctrl.signal})) {
+          for await (const ev of generate({route, messages: providerMessages, temperature: prefs.temperature ?? 0.7, maxTokens: Math.min(8192, Math.max(prefs.maxTokens || 2048, profile?.minTokens || 0)), effort, web, signal: ctrl.signal})) {
             if (ev.type === 'text') { reply += ev.value; res.write(JSON.stringify({delta: ev.value}) + '\n'); }
             else if (ev.type === 'reasoning') { if (reasoning.length < 60000) reasoning += ev.value; res.write(JSON.stringify({reasoning: ev.value}) + '\n'); }
             else if (ev.type === 'sources') { sources = ev.value; res.write(JSON.stringify({sources}) + '\n'); }

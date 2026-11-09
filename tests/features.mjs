@@ -62,7 +62,7 @@ test('esforço, raciocínio, pesquisa na web, PDF, continuação, login com Goog
     const answer = chat.messages[1];
     assert.equal(answer.effort, 'high'); assert.match(answer.reasoning, /Entendendo o pedido/);
     const plain = await a.call('generate', {model: 'jack/code', content: 'Teste simples', effort: 'medium', history: []});
-    assert.match(plain.frames.filter(f => f.delta).map(f => f.delta).join(''), /Esforço pedido: `medium`, max_tokens 7168/);
+    assert.match(plain.frames.filter(f => f.delta).map(f => f.delta).join(''), /Esforço pedido: `medium`, max_tokens 14336/);
     const noReasoning = await a.call('generate', {model: 'openrouter/mistralai/mistral-small-2603', content: 'Teste', effort: 'high', history: []});
     assert.doesNotMatch(noReasoning.frames.filter(f => f.delta).map(f => f.delta).join(''), /Esforço pedido/, 'modelo sem raciocínio ignora o esforço');
     const invalid = await a.call('generate', {model: 'jack/code', content: 'Teste', effort: 'máximo', history: []});

@@ -40,14 +40,14 @@ export const profiles = [
     description: 'Respostas rápidas para o dia a dia em modelos pagos rápidos e econômicos.',
     tasks: ['conversa', 'escrita'], access: 'guest',
     routes: ['openrouter/anthropic/claude-haiku-5.5', 'openrouter/google/gemini-3.8-flash', 'openrouter/openai/gpt-6-luna', 'openrouter/qwen/qwen3.8-flash', 'openrouter/deepseek/deepseek-v4.1-flash-1017'],
-    instructions: 'Você é o Jack AI Flash. Responda em português do Brasil, de forma clara e objetiva. Prefira respostas curtas, com listas apenas quando ajudarem a leitura.'
+    instructions: 'Você é o Jack AI Flash. Responda em português do Brasil, de forma clara e objetiva. Prefira respostas curtas, com listas apenas quando ajudarem a leitura. Quando entregar código, escreva cada arquivo completo em um bloco próprio, com o caminho do arquivo logo depois da linguagem na abertura do bloco (por exemplo ```lua main.lua ou ```js src/app.js). O Jack AI transforma esses blocos em arquivos e oferece tudo num .zip para baixar.'
   },
   {
     id: 'jack/pro', name: 'Jack AI Pro', when: 'Análise de documentos, planejamento e problemas com várias etapas',
     description: 'Usa a rota de maior capacidade configurada para o perfil. Requer conta conectada.',
     tasks: ['analise', 'escrita', 'codigo'], access: process.env.JACK_PRO_ACCESS === 'guest' ? 'guest' : 'account',
     routes: proRoutes.length ? proRoutes : ['openrouter/anthropic/claude-fable-5.1', 'openrouter/anthropic/claude-opus-5.5', 'openrouter/openai/gpt-6-astra-pro', 'openrouter/openai/gpt-6-astra', 'openrouter/google/gemini-4-argon', 'openrouter/openai/gpt-6.1-sol', 'largest:*'],
-    instructions: 'Você é o Jack AI Pro. Responda em português do Brasil. Para problemas com várias etapas, explicite premissas, organize o raciocínio em passos numerados e termine com uma recomendação e os próximos passos. Ao analisar documentos, cite as partes relevantes do texto fornecido.'
+    instructions: 'Você é o Jack AI Pro. Responda em português do Brasil. Para problemas com várias etapas, explicite premissas, organize o raciocínio em passos numerados e termine com uma recomendação e os próximos passos. Ao analisar documentos, cite as partes relevantes do texto fornecido. Quando entregar código, escreva cada arquivo completo em um bloco próprio, com o caminho do arquivo logo depois da linguagem na abertura do bloco (por exemplo ```lua main.lua ou ```js src/app.js). O Jack AI transforma esses blocos em arquivos e oferece tudo num .zip para baixar.'
   },
   {
     id: 'jack/studio', name: 'Jack AI Studio', when: 'Briefings, roteiros, campanhas e variações de conteúdo',
@@ -66,14 +66,14 @@ export const profiles = [
   {
     id: 'jack/code', name: 'Jack AI Code', when: 'Implementação, depuração e revisão de código',
     description: 'Foco em código: informe linguagem, comportamento esperado e erro observado.',
-    tasks: ['codigo'], access: 'guest',
+    tasks: ['codigo'], access: 'guest', minTokens: 8192,
     routes: ['openrouter/anthropic/claude-sonnet-5.5', 'openrouter/openai/gpt-6.1-sol', 'openrouter/x-ai/grok-4.7', 'openrouter/moonshotai/kimi-k3', 'openrouter/deepseek/deepseek-v4-pro-0813', 'openrouter/deepseek/deepseek-v4.1-flash-1017'],
     controls: [
       {id: 'language', label: 'Linguagem', type: 'text', placeholder: 'Ex.: TypeScript, Python'},
       {id: 'expected', label: 'Comportamento esperado', type: 'text', placeholder: 'O que deveria acontecer'},
       {id: 'observed', label: 'Erro observado', type: 'text', placeholder: 'Mensagem de erro ou sintoma'}
     ],
-    instructions: 'Você é o Jack AI Code. Responda em português do Brasil. Para implementação e depuração: identifique a causa provável, mostre o código corrigido em blocos com a linguagem indicada no cercamento (```linguagem), explique a mudança em poucas linhas e sugira como testar. Não invente APIs; quando faltar contexto, diga o que precisa ver.'
+    instructions: 'Você é o Jack AI Code. Responda em português do Brasil. Para implementação e depuração: identifique a causa provável, explique a mudança em poucas linhas e sugira como testar. Entregue o código como arquivos: cada arquivo completo, sem trechos omitidos nem reticências, em um bloco próprio com a linguagem e o caminho na abertura (```lua main.lua, ```js src/app.js, ```html index.html). Quando o pedido for um projeto, entregue todos os arquivos necessários para rodar, incluindo um README.md curto com como executar. Comandos de terminal vão em blocos ```bash curtos, sem nome de arquivo. O Jack AI junta os arquivos num .zip para a pessoa baixar. Não invente APIs; quando faltar contexto, diga o que precisa ver.'
   }
 ];
 

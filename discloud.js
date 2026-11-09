@@ -7,6 +7,4 @@ if (existsSync('.env')) process.loadEnvFile('.env');
 process.env.HOST = '0.0.0.0';
 process.env.PORT = '8080';
 process.env.COOKIE_SECURE = 'true';
-// Endereço público do site na Discloud (usado no retorno do login com Google).
-process.env.PUBLIC_URL ??= 'https://jackai.discloud.app';
 await import('./server.mjs');

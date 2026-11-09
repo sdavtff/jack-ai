@@ -1,7 +1,9 @@
 import {createDrafts, matchesChat, matchSnippet, preferredModel, suggestions, applySuggestion, incompatibleFiles, isImage, formatBytes, modelLabel} from './workspace.js';
 import {readApiResponse} from './api.js';
 import {icon} from './icons.js';
-import {renderMessage} from './render.js';
+import {renderMessage, saveFile} from './render.js';
+import {projectFiles, zipName} from './files.js';
+import {makeZip} from './zip.js';
 import {createPicker} from './picker.js';
 import {renderLibrary} from './library.js';
 
@@ -26,6 +28,32 @@ function stored(key, allowed) { try { const v = localStorage.getItem(key) || '';
 function remember(key, value) { try { value ? localStorage.setItem(key, value) : localStorage.removeItem(key); } catch {} }
 const EFFORTS = [['', 'Automático', 'O modelo decide quanto pensar'], ['low', 'Baixo', 'Responde mais rápido'], ['medium', 'Médio', 'Equilíbrio entre rapidez e cuidado'], ['high', 'Alto', 'Pensa mais antes de responder']];
 const effortName = v => EFFORTS.find(e => e[0] === (v || ''))[1];
+const CONTINUE = 'Continue a resposta exatamente de onde parou, sem repetir o que já foi escrito.';
+// Texto de uma resposta somado às partes que vieram por “Continuar resposta”.
+const continued = (rows, i) => rows[i]?.truncated && rows[i + 1]?.role === 'user' && rows[i + 1].content === CONTINUE && rows[i + 2]?.role === 'assistant';
+function chainText(rows, i) {
+  let text = rows[i].content, k = i;
+  while (k >= 2 && rows[k - 1]?.role === 'user' && rows[k - 1].content === CONTINUE && rows[k - 2]?.role === 'assistant' && rows[k - 2].truncated) { text = rows[k - 2].content + text; k -= 2; }
+  return text;
+}
+const filesOf = i => { const rows = messages(); return rows[i] ? projectFiles(chainText(rows, i)) : []; };
+function filesPanel(files, i) {
+  const box = document.createElement('section'); box.className = 'files'; box.setAttribute('aria-label', 'Arquivos gerados');
+  const bytes = files.reduce((n, f) => n + new Blob([f.code]).size, 0), broken = files.some(f => f.incomplete);
+  box.innerHTML = '<header>' + icon('archive') + '<div><b>Arquivos gerados</b><small>' + files.length + (files.length === 1 ? ' arquivo' : ' arquivos') + ' · ' + formatBytes(bytes) + '</small></div>' +
+    '<button type="button" class="primary" data-zip="' + i + '">' + icon('download') + 'Baixar .zip</button></header><ul>' +
+    files.map((f, k) => '<li>' + icon('file') + '<span class="fpath">' + esc(f.path) + '</span><small>' + esc([f.lang, f.lines + (f.lines === 1 ? ' linha' : ' linhas')].filter(Boolean).join(' · ')) + '</small>' +
+      (f.incomplete ? '<span class="tagc warn">incompleto</span>' : '') + '<button type="button" class="mini" data-file="' + i + ':' + k + '" aria-label="Baixar ' + esc(f.path) + '">' + icon('download') + 'Baixar</button></li>').join('') + '</ul>' +
+    (broken ? '<p class="note">' + icon('alert') + 'Um arquivo ficou incompleto porque a resposta foi cortada. Use “Continuar resposta” antes de baixar.</p>' : '');
+  return box;
+}
+function downloadZip(i) {
+  const files = filesOf(i);
+  if (!files.length) return toast('Esta resposta não tem arquivos de código.');
+  const name = zipName(state.temporary ? 'conversa-temporaria' : current()?.title);
+  saveFile(name, new Blob([makeZip(files.map(f => ({path: f.path, data: f.code.endsWith('\n') ? f.code : f.code + '\n'})))], {type: 'application/zip'}));
+  toast(name + ' baixado com ' + files.length + (files.length === 1 ? ' arquivo.' : ' arquivos.'));
+}
 
 // --- Utilidades de interface ---------------------------------------------------
 let toastTimer;
@@ -263,6 +291,10 @@ function messageEl(m, i, rows) {
       return '<li><a href="' + esc(src.url) + '" target="_blank" rel="noopener noreferrer">' + esc(src.title || host) + '</a><small>' + esc(host) + '</small></li>'; }).join('') + '</ol>';
     el.append(box);
   }
+  if (!m.streaming && !continued(rows, i)) {
+    const files = projectFiles(chainText(rows, i));
+    if (files.length) el.append(filesPanel(files, i));
+  }
   if (m.truncated && !m.streaming && !m.status) {
     const box = document.createElement('div'); box.className = 'status';
     box.innerHTML = icon('info') + '<div>A resposta chegou ao tamanho máximo configurado.' + (last && !state.job ? '<div class="actions"><button type="button" class="secondary" data-continue="' + i + '">' + icon('chevron') + 'Continuar resposta</button></div>' : '') + '</div>';
@@ -493,7 +525,7 @@ function continueReply() {
   const model = selected();
   if (state.job) return;
   if (!model?.available) return unavailableNotice(model || {name: 'O modelo escolhido'});
-  stream({kind: 'send', payload: {model: model.id, content: 'Continue a resposta exatamente de onde parou, sem repetir o que já foi escrito.', requestId: uuid(), ...tools()}});
+  stream({kind: 'send', payload: {model: model.id, content: CONTINUE, requestId: uuid(), ...tools()}});
 }
 const forHistory = m => ({role: m.role, content: m.content, ...(m.role === 'user' && m.files?.length ? {files: m.files.map(({name, size, text, data}) => data ? {name, size, data} : {name, size, text})} : {}), ...(m.role === 'user' && m.images?.length ? {images: m.images} : {})});
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -761,7 +793,8 @@ const GOOGLE_MESSAGES = {
   falha: 'O Google não confirmou o login. Tente de novo em instantes.', 'nao-verificado': 'O e-mail desta conta Google não está verificado.',
   existe: 'Já existe uma conta com este e-mail. Entre com e-mail e senha e depois conecte o Google em Configurações.',
   vinculada: 'Esta conta Google já está conectada a outro usuário do Jack AI.', desativado: 'O login com Google não está configurado nesta instalação.',
-  sessao: 'Sua sessão expirou. Recarregue a página e tente de novo.'
+  sessao: 'Sua sessão expirou. Recarregue a página e tente de novo.',
+  limite: 'Muitas tentativas de login em pouco tempo. Aguarde um minuto e tente de novo.'
 };
 function googleStart(mode) { saveDraft(); location.href = '/api/auth/google/start' + (mode === 'link' ? '?mode=link' : ''); }
 
@@ -775,13 +808,13 @@ function profile() {
 }
 const LENGTHS = [[512, 'Curtas'], [1024, 'Médias'], [2048, 'Longas'], [4096, 'Muito longas'], [8192, 'Máximo']];
 function settings() {
-  const u = state.user, p = u.prefs, size = LENGTHS.reduce((best, x) => Math.abs(x[0] - (p.maxTokens || 1024)) < Math.abs(best[0] - (p.maxTokens || 1024)) ? x : best)[0];
+  const u = state.user, p = u.prefs, size = LENGTHS.reduce((best, x) => Math.abs(x[0] - (p.maxTokens || 2048)) < Math.abs(best[0] - (p.maxTokens || 2048)) ? x : best)[0];
   const google = u.email && u.auth?.google ? (u.google ? '<p class="note ok">' + icon('check') + 'Conta Google conectada. Você pode entrar com o Google.</p>' : button('linkGoogle', icon('link') + 'Conectar conta Google')) : '';
   dialog('Configurações', '<form id="settingsform" class="stack"><label>Nome<input name="name" required maxlength="80" value="' + esc(u.name) + '"></label><label>Foto de perfil<input type="file" name="photo" accept="image/png,image/jpeg,image/webp"></label>' +
     '<label>Aparência<select name="theme">' + [['dark', 'Escura'], ['light', 'Clara'], ['auto', 'Automática']].map(([v, n]) => '<option value="' + v + '" ' + (v === (p.theme || 'dark') ? 'selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
     '<label>Instruções personalizadas<textarea name="instructions" maxlength="4000" placeholder="Ex.: responda de forma direta e use exemplos em Python.">' + esc(p.instructions) + '</textarea></label>' +
     '<label>Criatividade · aplicada em modelos compatíveis<select name="temperature">' + [[0.2, 'Precisa'], [0.7, 'Equilibrada'], [1.1, 'Criativa']].map(([v, n]) => '<option value="' + v + '" ' + (Math.abs((p.temperature ?? 0.7) - v) < 0.21 ? 'selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
-    '<label>Tamanho das respostas<select name="maxTokens">' + LENGTHS.map(([v, n]) => '<option value="' + v + '" ' + (v === size ? 'selected' : '') + '>' + n + '</option>').join('') + '</select></label><button class="primary">Salvar preferências</button></form>' +
+    '<label>Tamanho das respostas<select name="maxTokens" aria-describedby="sizehint">' + LENGTHS.map(([v, n]) => '<option value="' + v + '" ' + (v === size ? 'selected' : '') + '>' + n + '</option>').join('') + '</select><small id="sizehint">O Jack AI Code sempre usa o tamanho Máximo, para não cortar arquivos.</small></label><button class="primary">Salvar preferências</button></form>' +
     '<p class="note">Conversas temporárias ficam apenas na aba aberta. Ao enviar uma mensagem, o provedor do modelo recebe o contexto da conversa.</p>' +
     (u.email ? '<h3 class="sub">Conta</h3><p class="note">' + esc(u.email) + '</p><div class="actions">' + google + button('logoutAll', icon('logout') + 'Sair de todos os dispositivos') + button('logout', 'Sair') + '</div>' : (u.auth?.google ? '<div class="actions">' + button('google', icon('login') + 'Continuar com Google') + button('login', 'Entrar com e-mail') + '</div>' : '')) +
     '<h3 class="sub">Seus dados</h3><div class="actions"><a class="secondary btnlink" href="/api/export" download>' + icon('download') + 'Baixar meus dados (.json)</a>' + button('clearChats', icon('trash') + 'Excluir todas as conversas') + button('deleteAccount', 'Excluir conta e dados') + '</div>' +
@@ -890,6 +923,8 @@ document.addEventListener('click', guard(async e => {
   if (d.regenerate !== undefined) return regenerate(Number(d.regenerate));
   if (d.continue !== undefined) return continueReply();
   if (d.speak !== undefined) return speak(Number(d.speak));
+  if (d.zip !== undefined) return downloadZip(Number(d.zip));
+  if (d.file) { const [i, k] = d.file.split(':').map(Number), f = filesOf(i)[k]; if (f) { saveFile(f.path, f.code.endsWith('\n') ? f.code : f.code + '\n'); toast(f.path.split('/').pop() + ' baixado.'); } return; }
   if (d.version) { const [i, v] = d.version.split(':').map(Number); return selectVersion(i, v); }
   if (d.switch) { setModel(d.switch); toast('Modelo trocado. Use “Tentar novamente” para reenviar.'); return; }
   if (d.delete) {

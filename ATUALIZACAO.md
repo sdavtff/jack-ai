@@ -18,7 +18,13 @@
 - Entraram, todos pagos e lançados em 2026: Claude Fable 5.1, Claude Haiku 5.5, GPT-6 Astra Pro, Grok 4.7, DeepSeek V4 Pro 0813, Qwen3.8 Max (0902), Qwen3.8 Flash e Kimi K3. Continuam os modelos pagos que já estavam no catálogo.
 - O **Jack AI Free** virou **Jack AI Flash** (`jack/flash`), que usa os modelos pagos de menor custo. Conversas, favoritos e preferências salvos com `jack/free` passam a usar o Flash automaticamente.
 
-## O que muda nesta revisão (recursos novos)
+## O que muda nesta revisão (arquivos e .zip)
+
+- Código das respostas aparece como arquivo com nome, “Baixar” e “Copiar”, e cada resposta com código ganha **Arquivos gerados → Baixar .zip**.
+- O Jack AI Code sempre usa o tamanho máximo de resposta, e “Continuar resposta” junta as partes no mesmo .zip.
+- Login com Google: o servidor usa o endereço em que o site foi aberto. Se o site abre em `jackai.discloud.dev`, cadastre `https://jackai.discloud.dev/api/auth/google/callback` no Google e use `PUBLIC_URL=https://jackai.discloud.dev` (ou deixe `PUBLIC_URL` vazio).
+
+## O que muda na revisão anterior (recursos novos)
 
 - **Login com Google** (opcional, depois de configurar o cliente OAuth) e **Conectar conta Google** em Configurações.
 - **Nível de esforço** ao lado do modelo (Automático, Baixo, Médio, Alto), com o raciocínio do modelo em “Ver raciocínio”.
