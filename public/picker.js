@@ -1,7 +1,7 @@
 // Seletor rápido de modelos do chat: busca, favoritos, seções por fornecedor e
 // indicação do modelo ativo. Esc fecha e devolve o foco ao botão de origem.
 import {icon} from './icons.js';
-import {groupModels, incompatibleFiles} from './workspace.js';
+import {groupModels, incompatibleFiles, listable} from './workspace.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 
@@ -14,7 +14,7 @@ export function createPicker({root, anchor, ctx}) {
     if (m.preview) out.push('<span class="tagc preview">Prévia</span>');
     if (m.capabilities?.image) out.push('<span class="tagc" title="Cria imagens e figurinhas">Cria imagens</span>');
     else if (m.capabilities?.vision) out.push('<span class="tagc" title="Analisa imagens">Imagens</span>');
-    if (!m.available) out.push('<span class="tagc">Indisponível</span>');
+    if (!m.available) out.push('<span class="tagc">Entre na conta</span>');
     return out.join('');
   }
 
@@ -25,9 +25,8 @@ export function createPicker({root, anchor, ctx}) {
 
   function render() {
     const {catalog, model, favorites} = ctx.state();
-    const models = (catalog?.models || []).filter(m => m.available || m.kind === 'profile');
+    const models = (catalog?.models || []).filter(m => listable(m, catalog?.signedIn));
     const groups = groupModels(models, {favorites, query, order: ctx.order});
-    const hidden = (catalog?.models || []).filter(m => !m.available && m.kind === 'route').length;
     root.innerHTML = (confirm ? confirmBox() : '') +
       '<div class="picker-head"><div class="search"><i>' + icon('search') + '</i><input id="pickerSearch" type="search" autocomplete="off" placeholder="Buscar por nome ou fornecedor" aria-label="Buscar modelo por nome ou fornecedor" value="' + esc(query) + '"></div>' +
       '<p id="pickerHelp">Use as setas para navegar e Enter para escolher.</p></div>' +
@@ -37,7 +36,7 @@ export function createPicker({root, anchor, ctx}) {
           '<strong>' + esc(m.name) + '</strong><span class="tags">' + tags(m, model) + '</span><small>' + subtitle(m) + '</small></button>' +
           '<button type="button" class="icon fav" data-fav="' + esc(m.id) + '" aria-pressed="' + fav + '" aria-label="' + (fav ? 'Remover ' : 'Adicionar ') + esc(m.name) + (fav ? ' dos favoritos' : ' aos favoritos') + '">' + icon('star', fav) + '</button></div>';
       }).join('')).join('') : '<p class="empty">Nenhum modelo encontrado para “' + esc(query) + '”.</p>') + '</div>' +
-      '<div class="picker-foot"><span>' + (hidden ? hidden + (hidden === 1 ? ' modelo indisponível' : ' modelos indisponíveis') : 'Catálogo conferido em ' + esc(catalog?.checked ? new Date(catalog.checked + 'T12:00:00').toLocaleDateString('pt-BR') : '')) + '</span><button type="button" class="linkbtn" data-action="library">Biblioteca de modelos ' + icon('chevron') + '</button></div>';
+      '<div class="picker-foot"><span>' + 'Catálogo conferido em ' + esc(catalog?.checked ? new Date(catalog.checked + 'T12:00:00').toLocaleDateString('pt-BR') : '') + '</span><button type="button" class="linkbtn" data-action="library">Biblioteca de modelos ' + icon('chevron') + '</button></div>';
     const input = root.querySelector('#pickerSearch');
     input.oninput = () => { query = input.value; const pos = input.selectionStart; render(); const again = root.querySelector('#pickerSearch'); again.focus(); again.setSelectionRange(pos, pos); };
   }

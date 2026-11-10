@@ -47,6 +47,11 @@ export function matchSnippet(chat, query) {
   return '';
 }
 
+// Só entra na lista o que funciona agora. Exceção: perfil pronto que só pede login (fica com “Entre na conta”).
+export function listable(model, signedIn) {
+  return !!model && (model.available || (model.kind === 'profile' && model.access === 'account' && !signedIn && !!model.route));
+}
+
 export function preferredModel(models, current) {
   const available = models.filter(model => model.available);
   return (available.find(model => model.id === current) || available.find(model => model.id === 'jack/flash') || available[0])?.id || '';

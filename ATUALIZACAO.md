@@ -19,6 +19,7 @@
 - **Arquivos no chat**: o código deixou de aparecer solto na resposta. Cada arquivo vira um cartão; 1 arquivo chega como arquivo, 2 ou mais chegam num único **.zip**.
 - **Tutorial guiado**: abre sozinho no primeiro acesso de cada conta e passa por todas as ferramentas. Fica marcado na conta (não abre de novo em outro aparelho). Configurações › “Ver tutorial guiado” mostra de novo.
 - **Interromper mais confiável**: o botão agora também avisa o servidor (`POST /api/stop`), que encerra a geração e grava o trecho recebido mesmo quando um proxy segura a conexão aberta. Antes, a conversa podia ficar presa em “Aguarde a resposta em andamento”.
+- **Só modelos disponíveis**: o seletor e a Biblioteca mostram apenas o que funciona agora com a sua chave. Modelos sem rota, que falharam na verificação ou desativados somem da lista (o filtro “Só disponíveis” saiu). Perfis que só pedem login, como o Jack AI Pro para visitantes, continuam com “Entre na conta”. Se o modelo salvo parar de funcionar, o Jack AI troca sozinho para um disponível.
 - **Banco**: na primeira inicialização o servidor aplica `migrations/004.sql` (tabela `media` para as imagens geradas). Conversas existentes continuam intactas.
 
 ## O que muda na revisão anterior (catálogo pago de 2026)

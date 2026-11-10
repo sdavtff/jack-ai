@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDrafts, matchesChat, matchSnippet, preferredModel, applySuggestion, suggestions, incompatibleFiles, groupModels, modelLabel} from '../public/workspace.js';
+import {listable, createDrafts, matchesChat, matchSnippet, preferredModel, applySuggestion, suggestions, incompatibleFiles, groupModels, modelLabel} from '../public/workspace.js';
 
 function memoryStorage() { const m = new Map(); return {getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k), raw: m}; }
 
@@ -76,4 +76,14 @@ test('mensagens antigas continuam legíveis quando o modelo sai do catálogo', (
   assert.equal(modelLabel([], {model: 'openrouter/x/old-model'}), 'old-model (descontinuado)');
   assert.equal(modelLabel([], {model: 'jack/free', route: {name: 'gpt-oss-120b (gratuito)'}}), 'Jack AI · gpt-oss-120b (gratuito)');
   assert.equal(modelLabel([{id: 'a'}], {model: 'gone', route: {name: 'Modelo antigo'}}), 'Modelo antigo (fora do catálogo)');
+});
+
+test('só modelos disponíveis entram na lista; perfil que pede login continua visível', () => {
+  const ok = {id: 'a', kind: 'route', available: true};
+  const off = {id: 'b', kind: 'route', available: false};
+  const locked = {id: 'jack/pro', kind: 'profile', access: 'account', available: false, route: {id: 'r'}};
+  const empty = {id: 'jack/image', kind: 'profile', access: 'account', available: false, route: null};
+  const broken = {id: 'jack/studio', kind: 'profile', access: 'guest', available: false, route: null};
+  assert.deepEqual([ok, off, locked, empty, broken].filter(m => listable(m, false)).map(m => m.id), ['a', 'jack/pro']);
+  assert.deepEqual([ok, off, locked].filter(m => listable(m, true)).map(m => m.id), ['a']);
 });

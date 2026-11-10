@@ -196,7 +196,12 @@ with sync_playwright() as p:
     pg.click('[data-pick="jack/pro"]'); pg.wait_for_timeout(150)
     note = pg.inner_text('#notice')
     check('Pro sem conta explica o motivo e oferece alternativas', 'Entre na sua conta' in note and 'Usar Jack AI Flash' in note, note.replace('\n', ' ')[:160])
-    pg.click('#modelbtn'); pg.click('[data-fav="jack/code"]'); pg.wait_for_timeout(300)
+    pg.click('#modelbtn'); pg.wait_for_timeout(150)
+    shown = pg.evaluate("[...document.querySelectorAll('#pickerList [data-pick]')].map(b => b.dataset.pick)")
+    listed = pg.evaluate("fetch('/api/models').then(r => r.json()).then(c => c.models.map(m => ({id: m.id, ok: m.available || (m.kind === 'profile' && m.access === 'account' && !c.signedIn && !!m.route)})))")
+    bad = [m['id'] for m in listed if not m['ok'] and m['id'] in shown]
+    check('seletor mostra só modelos disponíveis (e perfis que pedem login)', not bad and len(shown) == sum(1 for m in listed if m['ok']) and 'Indisponível' not in pg.inner_text('#pickerList'), {'indevidos': bad, 'mostrados': len(shown)})
+    pg.click('[data-fav="jack/code"]'); pg.wait_for_timeout(300)
     check('favorito aparece no topo do seletor', pg.inner_text('#pickerList h3 >> nth=0') == 'FAVORITOS' or pg.inner_text('#pickerList h3 >> nth=0').lower() == 'favoritos')
     pg.keyboard.press('Escape')
 

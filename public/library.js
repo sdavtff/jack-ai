@@ -1,13 +1,13 @@
 // Biblioteca de modelos: mesma fonte de dados do seletor (GET /api/models).
 import {icon} from './icons.js';
-import {groupModels} from './workspace.js';
+import {groupModels, listable} from './workspace.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const tasks = [['todas', 'Todas'], ['conversa', 'Conversa'], ['escrita', 'Escrita'], ['codigo', 'Código'], ['analise', 'Análise'], ['conteudo', 'Conteúdo'], ['imagem', 'Imagens']];
 const caps = [['texto', 'Texto', m => m.capabilities?.text], ['codigo', 'Código', m => m.tasks?.includes('codigo')], ['imagens', 'Análise de imagens', m => m.capabilities?.vision], ['criaimagens', 'Cria imagens', m => m.capabilities?.image],
   ['arquivos', 'Leitura de arquivos', m => m.capabilities?.files], ['longo', 'Contexto longo', m => m.capabilities?.longContext]];
 const inputNames = {text: 'texto', image: 'imagem', file: 'arquivo (PDF)', audio: 'áudio', video: 'vídeo'};
-const filter = {task: 'todas', caps: new Set(), query: '', onlyAvailable: false};
+const filter = {task: 'todas', caps: new Set(), query: ''};
 const date = v => v ? new Date(v).toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'}) : '';
 const day = v => v ? new Date(v + 'T12:00:00').toLocaleDateString('pt-BR', {day: 'numeric', month: 'long', year: 'numeric'}) : '';
 
@@ -76,7 +76,7 @@ function card(m, catalog, current, favorites) {
 export function renderLibrary(root, ctx) {
   const {catalog, model, favorites} = ctx.state();
   if (!catalog) { root.innerHTML = '<div class="pagehead"><div><h1 id="librarytitle">Biblioteca de modelos</h1><p>Consultando provedores…</p></div></div><div class="skeleton"></div><div class="skeleton"></div>'; return; }
-  const matches = catalog.models.filter(m => (!filter.onlyAvailable || m.available) && (filter.task === 'todas' || m.tasks?.includes(filter.task)) && [...filter.caps].every(c => caps.find(x => x[0] === c)[2](m)));
+  const matches = catalog.models.filter(m => listable(m, catalog.signedIn) && (filter.task === 'todas' || m.tasks?.includes(filter.task)) && [...filter.caps].every(c => caps.find(x => x[0] === c)[2](m)));
   const groups = groupModels(matches, {favorites: [], query: filter.query, order: ctx.order});
   const available = catalog.models.filter(m => m.available && m.kind === 'route').length;
   root.innerHTML = '<div class="pagehead"><div><h1 id="librarytitle">Biblioteca de modelos</h1><p>Os perfis Jack AI escolhem a rota automaticamente. Os demais modelos estão separados por fornecedor. Catálogo conferido em ' + esc(day(catalog.checked)) + '.</p></div>' +
@@ -85,8 +85,7 @@ export function renderLibrary(root, ctx) {
     '<span class="provider on"><b>' + available + '</b>' + (available === 1 ? 'rota disponível' : 'rotas disponíveis') + '</span></div>' +
     '<div class="filters"><div class="search"><i>' + icon('search') + '</i><input id="libSearch" type="search" placeholder="Buscar por nome ou fornecedor" aria-label="Buscar na Biblioteca" value="' + esc(filter.query) + '"></div>' +
     '<div class="filterrow" role="group" aria-label="Filtrar por tarefa"><span>Tarefa</span>' + tasks.map(([id, label]) => '<button type="button" class="chip" data-task="' + id + '" aria-pressed="' + (filter.task === id) + '">' + label + '</button>').join('') + '</div>' +
-    '<div class="filterrow" role="group" aria-label="Filtrar por capacidade"><span>Capacidade</span>' + caps.map(([id, label]) => '<button type="button" class="chip" data-cap="' + id + '" aria-pressed="' + filter.caps.has(id) + '">' + label + '</button>').join('') +
-    '<button type="button" class="chip" data-only aria-pressed="' + filter.onlyAvailable + '">Só disponíveis</button></div></div>' +
+    '<div class="filterrow" role="group" aria-label="Filtrar por capacidade"><span>Capacidade</span>' + caps.map(([id, label]) => '<button type="button" class="chip" data-cap="' + id + '" aria-pressed="' + filter.caps.has(id) + '">' + label + '</button>').join('') + '</div></div>' +
     '<p class="sr-only" role="status">' + matches.length + ' modelos encontrados.</p>' +
     (groups.length ? groups.map(g => '<section class="libsection"><h2>' + esc(g.title) + ' <small>' + g.items.length + '</small></h2><div class="cards">' + g.items.map(m => card(m, catalog, model, favorites)).join('') + '</div></section>').join('')
       : '<p class="empty">Nenhum modelo corresponde aos filtros escolhidos.</p>');
@@ -97,7 +96,6 @@ export function renderLibrary(root, ctx) {
     if (!el) return;
     if (el.dataset.task) { filter.task = el.dataset.task; return rerender(el); }
     if (el.dataset.cap) { filter.caps.has(el.dataset.cap) ? filter.caps.delete(el.dataset.cap) : filter.caps.add(el.dataset.cap); return rerender(el); }
-    if (el.hasAttribute('data-only')) { filter.onlyAvailable = !filter.onlyAvailable; return rerender(el); }
     if (el.dataset.use) return ctx.use(el.dataset.use);
     if (el.dataset.fav) { const on = el.getAttribute('aria-pressed') !== 'true'; ctx.favorite(el.dataset.fav, on).then(() => rerender(el)); }
   };

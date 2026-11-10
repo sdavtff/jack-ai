@@ -1,4 +1,4 @@
-import {createDrafts, matchesChat, matchSnippet, preferredModel, suggestions, applySuggestion, incompatibleFiles, isImage, formatBytes, modelLabel} from './workspace.js';
+import {createDrafts, matchesChat, matchSnippet, preferredModel, listable, suggestions, applySuggestion, incompatibleFiles, isImage, formatBytes, modelLabel} from './workspace.js';
 import {readApiResponse} from './api.js';
 import {icon} from './icons.js';
 import {renderMessage, saveFile, isSvg} from './render.js';
@@ -900,7 +900,8 @@ async function loadCatalog() {
     let saved = ''; try { saved = localStorage.getItem('jack.model') || ''; } catch {}
     const want = canon(state.model || saved);
     const hit = data.models.find(m => m.id === want);
-    if (hit) { state.model = want; if (!hit.available && !state.job && (!state.notice || /indisponível/.test(state.notice.html))) unavailableNotice(hit); else if (state.notice?.type === 'warn' && /indisponível/.test(state.notice.html)) state.notice = null; }
+    if (hit && !listable(hit, data.signedIn)) { state.model = preferredModel(data.models, ''); if (state.notice?.type === 'warn' && /indisponível/.test(state.notice.html)) state.notice = null; }
+    else if (hit) { state.model = want; if (!hit.available && !state.job && (!state.notice || /indisponível/.test(state.notice.html))) unavailableNotice(hit); else if (state.notice?.type === 'warn' && /indisponível/.test(state.notice.html)) state.notice = null; }
     else state.model = preferredModel(data.models, '');
     if (want && !hit) setNotice({type: 'warn', html: 'O modelo escolhido antes não está mais no catálogo. Selecionei ' + esc(selected()?.name || 'outro modelo') + '; você pode trocar a qualquer momento.'});
   } catch (e) {
